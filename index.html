@@ -551,7 +551,10 @@ async function dbxDownload(){
     headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({path: DROPBOX_DATA_PATH}) }
   });
   if(resp.status===409) return { notes: [], customPages: [] }; // no file saved yet
-  if(!resp.ok) throw new Error('Dropbox download failed: '+resp.status);
+  if(!resp.ok){
+    const text = await resp.text().catch(()=>'');
+    throw new Error('Dropbox download failed: '+resp.status+' — '+text);
+  }
   return await resp.json();
 }
 async function dbxUpload(payload){
@@ -566,7 +569,10 @@ async function dbxUpload(payload){
     },
     body: JSON.stringify(payload)
   });
-  if(!resp.ok) throw new Error('Dropbox upload failed: '+resp.status);
+  if(!resp.ok){
+    const text = await resp.text().catch(()=>'');
+    throw new Error('Dropbox upload failed: '+resp.status+' — '+text);
+  }
 }
 
 function setSyncStatus(state, label){
