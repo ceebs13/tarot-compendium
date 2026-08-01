@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Compendium — Tarot Notes</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root{
+  --ink:#211a14;
+  --parchment:#ece4d1;
+  --parchment-dim:#ded3ba;
+  --leather:#241b16;
+  --leather-2:#332720;
+  --brass:#b6903f;
+  --brass-bright:#d4ac5e;
+  --oxblood:#6e2a34;
+  --sage:#6f7d5e;
+  --line: rgba(33,26,20,0.18);
+  --shadow: 0 8px 24px rgba(20,14,8,0.25);
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background: var(--leather);
+  background-image:
+    radial-gradient(ellipse at top left, rgba(182,144,63,0.06), transparent 55%),
+    radial-gradient(ellipse at bottom right, rgba(110,42,52,0.10), transparent 55%);
+  color: var(--ink);
+  font-family: 'Source Serif 4', Georgia, serif;
+  min-height:100vh;
+}
+
+/* ---------- header ---------- */
+.topbar{
+  position:sticky; top:0; z-index:20;
+  background: linear-gradient(180deg, var(--leather-2), var(--leather));
+  border-bottom: 2px solid var(--brass);
+  padding: 14px 22px;
+  display:flex; align-items:center; gap:18px;
+  box-shadow: var(--shadow);
+}
+.brand{
+  font-family:'Fraunces', serif;
+  font-weight:700;
+  font-size: 22px;
+  color: var(--brass-bright);
+  letter-spacing:0.03em;
+  white-space:nowrap;
+  display:flex; align-items:center; gap:10px;
+}
+.brand .mark{
+  width:26px;height:26px;border-radius:50%;
+  border:2px solid var(--brass-bright);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:13px; color:var(--brass-bright); font-family:'JetBrains Mono',monospace;
+}
+.search-wrap{ flex:1; max-width:420px; }
+.search-wrap input{
+  width:100%; padding:9px 14px;
+  background: rgba(236,228,209,0.08);
+  border:1px solid rgba(212,172,94,0.35);
+  border-radius:20px;
+  color: var(--parchment);
+  font-family:'Source Serif 4', serif;
+  font-size:14px;
+  outline:none;
+}
+.search-wrap input::placeholder{ color: rgba(236,228,209,0.45); }
+.search-wrap input:focus{ border-color: var(--brass-bright); }
+
+.topbar-actions{ margin-left:auto; display:flex; gap:10px; align-items:center; }
+.sync-status{
+  font-family:'JetBrains Mono',monospace; font-size:11px;
+  color: rgba(236,228,209,0.55);
+  display:flex; align-items:center; gap:6px;
+}
+.sync-status .dot{ width:7px; height:7px; border-radius:50%; background:#8a8a8a; display:inline-block; }
+.sync-status.ok .dot{ background:#7a9e6b; }
+.sync-status.error .dot{ background:var(--oxblood); }
+.sync-status.busy .dot{ background: var(--brass-bright); animation: pulse 1s infinite ease-in-out; }
+@keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+.btn{
+  font-family:'Source Serif 4', serif;
+  font-size:14px;
+  padding:9px 16px;
+  border-radius:6px;
+  border:1px solid var(--brass);
+  background:transparent;
+  color: var(--brass-bright);
+  cursor:pointer;
+  transition: all .15s ease;
+}
+.btn:hover{ background: rgba(212,172,94,0.12); }
+.btn.primary{
+  background: var(--brass);
+  color: var(--leather);
+  font-weight:600;
+  border-color: var(--brass);
+}
+.btn.primary:hover{ background: var(--brass-bright); }
+.btn.ghost{ border-color: rgba(236,228,209,0.25); color: rgba(236,228,209,0.75); }
+.btn.small{ font-size:12px; padding:5px 10px; }
+
+/* ---------- main / grid ---------- */
+main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
+.suit-heading{
+  font-family:'Fraunces', serif;
+  font-size:15px;
+  letter-spacing:0.16em;
+  text-transform:uppercase;
+  color: var(--parchment);
+  opacity:0.7;
+  margin: 34px 0 14px;
+  display:flex; align-items:center; gap:12px;
+}
+.suit-heading::after{
+  content:''; flex:1; height:1px; background: rgba(236,228,209,0.2);
+}
+.grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px,1fr));
+  gap:14px;
+}
+.card-tile{
+  background: var(--parchment);
+  background-image: linear-gradient(160deg, var(--parchment), var(--parchment-dim));
+  border-radius:8px;
+  padding:16px 14px;
+  cursor:pointer;
+  position:relative;
+  border: 1px solid rgba(33,26,20,0.15);
+  box-shadow: 0 3px 8px rgba(20,14,8,0.28);
+  transition: transform .15s ease, box-shadow .15s ease;
+  min-height:108px;
+  display:flex; flex-direction:column; justify-content:space-between;
+}
+.card-tile:hover{ transform: translateY(-3px); box-shadow: 0 8px 18px rgba(20,14,8,0.4); }
+.card-tile::before{
+  content:''; position:absolute; top:8px; right:8px; width:8px; height:8px;
+  border-radius:50%; background: var(--brass); opacity:0.5;
+}
+.card-num{
+  font-family:'JetBrains Mono', monospace;
+  font-size:11px;
+  color: var(--oxblood);
+  opacity:0.75;
+  letter-spacing:0.05em;
+}
+.card-name{
+  font-family:'Fraunces', serif;
+  font-weight:600;
+  font-size:16px;
+  line-height:1.25;
+  margin-top:8px;
+}
+.card-count{
+  font-family:'JetBrains Mono', monospace;
+  font-size:11px;
+  color: var(--sage);
+  margin-top:10px;
+}
+.card-count.empty{ opacity:0.4; }
+.card-tile.add-tile{
+  background: transparent;
+  border: 2px dashed rgba(236,228,209,0.35);
+  box-shadow:none;
+  align-items:center; justify-content:center; text-align:center;
+  color: rgba(236,228,209,0.65);
+}
+.card-tile.add-tile:hover{ border-color: var(--brass-bright); color: var(--brass-bright); background: rgba(236,228,209,0.05); }
+.card-tile.add-tile::before{ display:none; }
+
+/* ---------- card detail (compiled page) ---------- */
+#cardView{ display:none; }
+.page-header{
+  display:flex; align-items:flex-end; justify-content:space-between;
+  border-bottom: 2px solid var(--brass);
+  padding-bottom:16px; margin-bottom:26px;
+  flex-wrap:wrap; gap:12px;
+}
+.back-link{
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px; color: var(--brass-bright);
+  cursor:pointer; opacity:0.85;
+  margin-bottom:10px; display:inline-block;
+}
+.back-link:hover{ opacity:1; text-decoration:underline; }
+.page-title-block .eyebrow{
+  font-family:'JetBrains Mono',monospace; font-size:12px;
+  color: var(--brass-bright); opacity:0.75; letter-spacing:0.1em;
+}
+.page-title{
+  font-family:'Fraunces', serif; font-weight:700;
+  font-size:38px; color: var(--parchment);
+}
+.entries{ display:flex; flex-direction:column; gap:18px; }
+.entry{
+  background: var(--parchment);
+  border-radius:8px;
+  padding:20px 24px;
+  box-shadow: var(--shadow);
+  border-left: 4px solid var(--brass);
+  transition: opacity .15s ease, border-top-color .1s ease;
+}
+.entry.dragging{ opacity:0.4; }
+.entry.drag-over{ border-top:3px solid var(--oxblood); }
+.drag-handle{ cursor:grab; opacity:0.45; margin-right:8px; letter-spacing:-2px; }
+.drag-handle:hover{ opacity:0.8; }
+.drag-handle:active{ cursor:grabbing; }
+.entry-meta{
+  display:flex; justify-content:space-between; align-items:center;
+  font-family:'JetBrains Mono',monospace; font-size:11px;
+  color: var(--oxblood); opacity:0.7; margin-bottom:10px;
+}
+.entry-actions{ display:flex; gap:8px; }
+.entry-actions span{ cursor:pointer; opacity:0.6; }
+.entry-actions span:hover{ opacity:1; }
+.entry-body{ font-size:16px; line-height:1.65; }
+.entry-body img{ max-width:100%; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; }
+.entry-body p{ margin:0 0 10px; }
+.entry-body ul, .entry-body ol{ margin:0 0 10px; padding-left:22px; }
+.entry-body blockquote{
+  border-left:3px solid var(--sage); margin:10px 0; padding:4px 0 4px 14px;
+  font-style:italic; color:#3a3226;
+}
+.empty-state{
+  text-align:center; padding:60px 20px; color: rgba(236,228,209,0.55);
+  font-family:'Cormorant Garamond', serif; font-size:20px; font-style:italic;
+}
+
+/* ---------- modal ---------- */
+.overlay{
+  display:none; position:fixed; inset:0; z-index:50;
+  background: rgba(20,14,8,0.6);
+  align-items:center; justify-content:center; padding:20px;
+}
+.overlay.open{ display:flex; }
+.modal{
+  background: var(--parchment);
+  width:100%; max-width:640px; max-height:88vh;
+  border-radius:10px; overflow:hidden;
+  display:flex; flex-direction:column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  border:1px solid var(--brass);
+}
+.modal-header{
+  padding:16px 22px; border-bottom:1px solid var(--line);
+  display:flex; align-items:center; justify-content:space-between;
+  background: var(--parchment-dim);
+}
+.modal-header h3{ margin:0; font-family:'Fraunces', serif; font-size:19px; }
+.modal-close{ cursor:pointer; font-size:20px; opacity:0.6; background:none; border:none; }
+.modal-close:hover{ opacity:1; }
+.modal-body{ padding:18px 22px; overflow-y:auto; flex:1; }
+
+.tag-select{ position:relative; margin-bottom:14px; }
+.tag-select label, .field-label{
+  display:block; font-family:'JetBrains Mono',monospace; font-size:11px;
+  text-transform:uppercase; letter-spacing:0.08em; color:#5c4f3d; margin-bottom:6px;
+}
+.tag-input{
+  width:100%; padding:8px 12px; border:1px solid rgba(33,26,20,0.25);
+  border-radius:6px; font-family:'Source Serif 4',serif; font-size:14px;
+}
+.tag-dropdown{
+  position:absolute; top:100%; left:0; right:0; background:#fff;
+  border:1px solid rgba(33,26,20,0.25); border-radius:6px; max-height:180px;
+  overflow-y:auto; z-index:10; box-shadow: 0 6px 16px rgba(0,0,0,0.2); display:none;
+}
+.tag-dropdown.open{ display:block; }
+.tag-option{ padding:7px 12px; font-size:14px; cursor:pointer; }
+.tag-option:hover{ background: var(--parchment-dim); }
+.chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.chip{
+  background: var(--oxblood); color:#fff; font-size:12px; padding:4px 10px;
+  border-radius:12px; display:flex; align-items:center; gap:6px;
+  font-family:'JetBrains Mono',monospace;
+}
+.chip span{ cursor:pointer; opacity:0.8; }
+.chip span:hover{ opacity:1; }
+
+.toolbar{
+  display:flex; gap:4px; padding:6px; background: var(--parchment-dim);
+  border:1px solid rgba(33,26,20,0.2); border-bottom:none;
+  border-radius:6px 6px 0 0; flex-wrap:wrap;
+}
+.toolbar button{
+  width:30px; height:30px; border:none; background:transparent;
+  border-radius:4px; cursor:pointer; font-size:14px; color:var(--ink);
+}
+.toolbar button:hover{ background: rgba(33,26,20,0.1); }
+.toolbar button:disabled{ opacity:0.35; cursor:not-allowed; }
+.toolbar button:disabled:hover{ background:transparent; }
+#codeToggleBtn{ width:auto; padding:0 10px; font-family:'JetBrains Mono',monospace; font-size:12px; }
+#codeToggleBtn.active{ background: var(--brass); color:#fff; }
+.toolbar button.b{ font-weight:700; }
+.toolbar button.i{ font-style:italic; }
+.editor{
+  min-height:150px; max-height:320px; overflow-y:auto;
+  border:1px solid rgba(33,26,20,0.2); border-radius:0 0 6px 6px;
+  padding:12px 14px; font-size:15px; line-height:1.6; background:#fff;
+  outline:none;
+}
+.editor img{ max-width:100%; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; }
+.editor:empty:before{ content: attr(data-placeholder); color:#9c9182; }
+
+.modal-footer{
+  padding:14px 22px; border-top:1px solid var(--line);
+  display:flex; justify-content:space-between; align-items:center;
+  background: var(--parchment-dim);
+}
+input[type=file]{ display:none; }
+
+/* ---------- fab ---------- */
+.fab{
+  position:fixed; bottom:28px; right:28px; z-index:30;
+  background: var(--brass); color: var(--leather);
+  border:none; border-radius:30px; padding:14px 22px;
+  font-family:'Fraunces',serif; font-weight:600; font-size:15px;
+  cursor:pointer; box-shadow: 0 8px 22px rgba(0,0,0,0.4);
+  display:flex; align-items:center; gap:8px;
+}
+.fab:hover{ background: var(--brass-bright); }
+
+.hidden{ display:none !important; }
+@media (max-width:600px){
+  .page-title{ font-size:28px; }
+  .brand span.txt{ display:none; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="mark">☾</span><span class="txt">The Compendium</span></div>
+  <div class="search-wrap"><input id="searchBox" placeholder="Search cards…"/></div>
+  <div class="topbar-actions">
+    <span id="syncStatus" class="sync-status"></span>
+    <button class="btn ghost small" id="syncNowBtn" style="display:none;">Sync now</button>
+    <button class="btn ghost small" id="dropboxBtn">Connect Dropbox</button>
+    <button class="btn ghost small" id="exportBtn">Export backup</button>
+    <button class="btn ghost small" id="importBtn">Import</button>
+    <input type="file" id="importFile" accept=".json"/>
+  </div>
+</div>
+
+<main>
+  <div id="homeView"></div>
+
+  <div id="cardView">
+    <span class="back-link" id="backLink">← all cards</span>
+    <div class="page-header">
+      <div class="page-title-block">
+        <div class="eyebrow" id="pageEyebrow"></div>
+        <div class="page-title" id="pageTitle"></div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn ghost" id="deletePageBtn" style="display:none;">Delete this page</button>
+        <button class="btn primary" id="addNoteForThisCard">+ Add note to this page</button>
+      </div>
+    </div>
+    <div class="entries" id="entries"></div>
+  </div>
+</main>
+
+<button class="fab" id="fabAdd">✎ New note</button>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">New note</h3>
+      <button class="modal-close" id="modalClose">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="tag-select">
+        <label>Tag to card(s)</label>
+        <input class="tag-input" id="tagInput" placeholder="Type to search a card…" autocomplete="off"/>
+        <div class="tag-dropdown" id="tagDropdown"></div>
+        <div class="chips" id="chips"></div>
+      </div>
+
+      <label class="field-label">Date added</label>
+      <input type="datetime-local" class="tag-input" id="dateInput" style="margin-bottom:14px;"/>
+
+      <label class="field-label">Note</label>
+      <div class="toolbar">
+        <button class="b" data-cmd="bold" title="Bold">B</button>
+        <button class="i" data-cmd="italic" title="Italic">I</button>
+        <button data-cmd="underline" title="Underline"><u>U</u></button>
+        <button data-cmd="insertUnorderedList" title="Bullet list">• ―</button>
+        <button data-cmd="insertOrderedList" title="Numbered list">1.</button>
+        <button data-cmd="formatBlock:BLOCKQUOTE" title="Quote">"</button>
+        <button id="imgBtn" title="Insert image">🖼</button>
+        <input type="file" id="imgFile" accept="image/*" multiple/>
+        <button id="codeToggleBtn" title="View/edit raw HTML" style="margin-left:auto;">&lt;/&gt;</button>
+      </div>
+      <div class="editor" id="editor" contenteditable="true" data-placeholder="Write your note here…"></div>
+      <textarea class="editor" id="editorCode" style="display:none; width:100%; font-family:'JetBrains Mono',monospace; font-size:13px; resize:vertical;"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn ghost" id="deleteNoteBtn" style="display:none;">Delete note</button>
+      <button class="btn primary" id="saveNoteBtn">Save note</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- card data ----------
+const MAJOR = ["The Fool","The Magician","The High Priestess","The Empress","The Emperor","The Hierophant","The Lovers","The Chariot","Strength","The Hermit","Wheel of Fortune","Justice","The Hanged Man","Death","Temperance","The Devil","The Tower","The Star","The Moon","The Sun","Judgement","The World"];
+const SUITS = [
+  {name:"Wands", symbol:"🜂"},
+  {name:"Cups", symbol:"🜄"},
+  {name:"Swords", symbol:"🜁"},
+  {name:"Pentacles", symbol:"🜃"}
+];
+const RANKS = ["Ace","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Page","Knight","Queen","King"];
+
+const CARDS = [];
+MAJOR.forEach((name,i)=>{
+  CARDS.push({id:"major-"+i, name, eyebrow:"Major Arcana · "+(i===0?"0":i), group:"Major Arcana"});
+});
+SUITS.forEach(suit=>{
+  RANKS.forEach((rank,i)=>{
+    const name = rank+" of "+suit.name;
+    CARDS.push({id:(suit.name+"-"+rank).toLowerCase().replace(/\s+/g,'-'), name, eyebrow:"Minor Arcana · "+suit.name, group:suit.name});
+  });
+});
+
+const GROUP_ORDER = ["Major Arcana","Wands","Cups","Swords","Pentacles"];
+
+// Group-wide tags: tag a note to "Wands (all cards)" and it automatically
+// appears on every Wands card's page too, alongside that card's own notes.
+function groupSlug(name){ return 'group-' + name.toLowerCase().replace(/\s+/g,'-'); }
+const GROUP_TAGS = GROUP_ORDER.map(g => ({
+  id: groupSlug(g),
+  name: g + ' (all cards)',
+  eyebrow: 'Suit-wide tag — appears on every card below',
+  group: 'Suit & Arcana Tags'
+}));
+
+// ---------- custom / broader pages (suit overviews, numerology, themes, etc.) ----------
+let CUSTOM_PAGES = []; // {id, name}
+
+function allPages(){
+  return CARDS.concat(GROUP_TAGS).concat(CUSTOM_PAGES.map(p=>({id:p.id, name:p.name, eyebrow:"General & Themes", group:"General & Themes"})));
+}
+
+// ---------- storage ----------
+// Two layers: localStorage is a fast local cache that always works, even
+// offline. If Dropbox is connected, the same data also lives in one JSON
+// file in the app's own Dropbox folder, so your phone and computer can
+// both read/write the same notes instead of each having their own copy.
+const STORAGE_KEY = "tarot-compendium-notes";
+const CUSTOM_PAGES_KEY = "tarot-compendium-custom-pages";
+let NOTES = []; // {id, cardIds:[], html, createdAt, updatedAt, order}
+
+// ---- Dropbox config ----
+const DROPBOX_APP_KEY = "raiwrwit2jr3l9p";
+const DROPBOX_REDIRECT_URI = window.location.origin + window.location.pathname;
+const DROPBOX_DATA_PATH = "/tarot-compendium-data.json";
+
+function b64url(bytes){
+  return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+async function pkceChallenge(verifier){
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return b64url(digest);
+}
+function randomVerifier(){
+  const arr = new Uint8Array(64);
+  crypto.getRandomValues(arr);
+  return b64url(arr);
+}
+async function startDropboxConnect(){
+  const verifier = randomVerifier();
+  sessionStorage.setItem('dbx_verifier', verifier);
+  const challenge = await pkceChallenge(verifier);
+  const params = new URLSearchParams({
+    client_id: DROPBOX_APP_KEY,
+    response_type: 'code',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    redirect_uri: DROPBOX_REDIRECT_URI,
+    token_access_type: 'offline'
+  });
+  window.location = 'https://www.dropbox.com/oauth2/authorize?' + params.toString();
+}
+async function completeDropboxConnectIfReturning(){
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if(!code) return false;
+  const verifier = sessionStorage.getItem('dbx_verifier');
+  try{
+    const resp = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({
+        code, grant_type:'authorization_code',
+        client_id: DROPBOX_APP_KEY,
+        redirect_uri: DROPBOX_REDIRECT_URI,
+        code_verifier: verifier
+      })
+    });
+    const data = await resp.json();
+    if(data.access_token){
+      localStorage.setItem('dbx_access_token', data.access_token);
+      localStorage.setItem('dbx_refresh_token', data.refresh_token);
+      localStorage.setItem('dbx_expires_at', String(Date.now() + data.expires_in*1000));
+      window.history.replaceState({}, document.title, DROPBOX_REDIRECT_URI);
+      return true;
+    }
+  }catch(e){ console.error('Dropbox connect failed', e); }
+  return false;
+}
+function isDropboxConnected(){
+  return !!localStorage.getItem('dbx_refresh_token');
+}
+function disconnectDropbox(){
+  localStorage.removeItem('dbx_access_token');
+  localStorage.removeItem('dbx_refresh_token');
+  localStorage.removeItem('dbx_expires_at');
+}
+async function getValidDropboxToken(){
+  const expiresAt = Number(localStorage.getItem('dbx_expires_at')||0);
+  if(Date.now() < expiresAt - 60000){
+    return localStorage.getItem('dbx_access_token');
+  }
+  const refreshToken = localStorage.getItem('dbx_refresh_token');
+  if(!refreshToken) return null;
+  const resp = await fetch('https://api.dropboxapi.com/oauth2/token', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({ grant_type:'refresh_token', refresh_token: refreshToken, client_id: DROPBOX_APP_KEY })
+  });
+  const data = await resp.json();
+  if(data.access_token){
+    localStorage.setItem('dbx_access_token', data.access_token);
+    localStorage.setItem('dbx_expires_at', String(Date.now() + data.expires_in*1000));
+    return data.access_token;
+  }
+  return null;
+}
+async function dbxDownload(){
+  const token = await getValidDropboxToken();
+  if(!token) return null;
+  const resp = await fetch('https://content.dropboxapi.com/2/files/download', {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({path: DROPBOX_DATA_PATH}) }
+  });
+  if(resp.status===409) return { notes: [], customPages: [] }; // no file saved yet
+  if(!resp.ok) throw new Error('Dropbox download failed: '+resp.status);
+  return await resp.json();
+}
+async function dbxUpload(payload){
+  const token = await getValidDropboxToken();
+  if(!token) throw new Error('Not connected to Dropbox');
+  const resp = await fetch('https://content.dropboxapi.com/2/files/upload', {
+    method:'POST',
+    headers:{
+      'Authorization':'Bearer '+token,
+      'Dropbox-API-Arg': JSON.stringify({path: DROPBOX_DATA_PATH, mode:'overwrite', mute:true}),
+      'Content-Type':'application/octet-stream'
+    },
+    body: JSON.stringify(payload)
+  });
+  if(!resp.ok) throw new Error('Dropbox upload failed: '+resp.status);
+}
+
+function setSyncStatus(state, label){
+  const el = document.getElementById('syncStatus');
+  el.className = 'sync-status ' + state;
+  el.innerHTML = `<span class="dot"></span>${label}`;
+}
+function updateDropboxButton(){
+  const btn = document.getElementById('dropboxBtn');
+  const syncBtn = document.getElementById('syncNowBtn');
+  btn.textContent = isDropboxConnected() ? 'Disconnect Dropbox' : 'Connect Dropbox';
+  syncBtn.style.display = isDropboxConnected() ? 'inline-block' : 'none';
+}
+
+// Merge two {notes, customPages} sets. Notes/pages present on only one
+// side are kept (union). If the same id exists on both sides, the one
+// with the later updatedAt wins. Deletions don't sync perfectly across
+// devices this way — if you delete something on one device, hit "Sync"
+// on the other before trusting it's gone everywhere.
+function mergeData(a, b){
+  const noteMap = new Map();
+  (a.notes||[]).forEach(n=>noteMap.set(n.id, n));
+  (b.notes||[]).forEach(n=>{
+    const existing = noteMap.get(n.id);
+    if(!existing || (n.updatedAt||0) > (existing.updatedAt||0)) noteMap.set(n.id, n);
+  });
+  const pageMap = new Map();
+  (a.customPages||[]).forEach(p=>pageMap.set(p.id, p));
+  (b.customPages||[]).forEach(p=>pageMap.set(p.id, p));
+  return { notes: Array.from(noteMap.values()), customPages: Array.from(pageMap.values()) };
+}
+
+function loadLocalCache(){
+  try{ NOTES = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '[]'); }catch(e){ NOTES = []; }
+  try{ CUSTOM_PAGES = JSON.parse(window.localStorage.getItem(CUSTOM_PAGES_KEY) || '[]'); }catch(e){ CUSTOM_PAGES = []; }
+}
+function saveLocalCache(){
+  try{
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(NOTES));
+    window.localStorage.setItem(CUSTOM_PAGES_KEY, JSON.stringify(CUSTOM_PAGES));
+  }catch(e){
+    console.error("Local save failed", e);
+    alert("Could not save locally — your browser's storage may be full or disabled. Export a backup now if you can.");
+  }
+}
+
+// Pull from Dropbox, merge with what's here, save the merged result both
+// places. Call this on load and whenever the person hits "Sync now".
+async function syncWithDropbox(){
+  if(!isDropboxConnected()) return;
+  setSyncStatus('busy', 'Syncing…');
+  try{
+    const remote = await dbxDownload();
+    const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES}, remote || {notes:[],customPages:[]});
+    NOTES = merged.notes;
+    CUSTOM_PAGES = merged.customPages;
+    saveLocalCache();
+    await dbxUpload(merged);
+    setSyncStatus('ok', 'Synced');
+  }catch(e){
+    console.error('Sync failed', e);
+    setSyncStatus('error', 'Sync failed — saved locally');
+  }
+}
+
+// Called after any local change: save immediately (always works), then
+// push to Dropbox in the background if connected.
+async function persistNotes(){
+  saveLocalCache();
+  if(isDropboxConnected()){
+    setSyncStatus('busy','Saving…');
+    try{ await dbxUpload({notes:NOTES, customPages:CUSTOM_PAGES}); setSyncStatus('ok','Synced'); }
+    catch(e){ console.error(e); setSyncStatus('error','Sync failed — saved locally'); }
+  }
+}
+async function persistCustomPages(){ await persistNotes(); }
+async function loadNotes(){ loadLocalCache(); }
+function loadCustomPages(){ /* handled by loadLocalCache() */ }
+
+function relevantTagIdsFor(cardId){
+  const card = allPages().find(c=>c.id===cardId);
+  const ids = [cardId];
+  if(card && GROUP_ORDER.includes(card.group)){
+    ids.push(groupSlug(card.group));
+  }
+  return ids;
+}
+function notesForCard(cardId){
+  const ids = relevantTagIdsFor(cardId);
+  const list = NOTES.filter(n=> n.cardIds.some(id=>ids.includes(id)));
+  return list.sort((a,b)=> (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
+}
+function countForCard(cardId){
+  return notesForCard(cardId).length;
+}
+
+// ---------- navigation state ----------
+let currentCardId = null;
+let editingNoteId = null;
+
+const homeView = document.getElementById('homeView');
+const cardView = document.getElementById('cardView');
+
+function showHome(){
+  currentCardId = null;
+  cardView.style.display = 'none';
+  homeView.style.display = 'block';
+  renderHome();
+}
+function showCard(cardId){
+  currentCardId = cardId;
+  homeView.style.display = 'none';
+  cardView.style.display = 'block';
+  renderCard(cardId);
+}
+document.getElementById('deletePageBtn').onclick = ()=>{
+  if(!currentCardId) return;
+  const page = CUSTOM_PAGES.find(p=>p.id===currentCardId);
+  if(!page) return;
+  if(confirm(`Delete the page "${page.name}"? Notes tagged here stay saved, but this page will no longer exist to view them on — remove the tag from any note you want to keep visible elsewhere first.`)){
+    CUSTOM_PAGES = CUSTOM_PAGES.filter(p=>p.id!==currentCardId);
+    persistCustomPages();
+    showHome();
+  }
+};
+
+function renderHome(filter){
+  filter = (filter||'').toLowerCase();
+  homeView.innerHTML = '';
+  GROUP_ORDER.forEach(group=>{
+    const cards = CARDS.filter(c=>c.group===group && c.name.toLowerCase().includes(filter));
+    if(cards.length===0) return;
+    const heading = document.createElement('div');
+    heading.className = 'suit-heading';
+    heading.textContent = group;
+    homeView.appendChild(heading);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    cards.forEach(c=>{
+      const tile = document.createElement('div');
+      tile.className='card-tile';
+      const n = countForCard(c.id);
+      tile.innerHTML = `<div><div class="card-num">${c.eyebrow}</div><div class="card-name">${c.name}</div></div>
+        <div class="card-count ${n===0?'empty':''}">${n} note${n===1?'':'s'}</div>`;
+      tile.onclick = ()=> showCard(c.id);
+      grid.appendChild(tile);
+    });
+    homeView.appendChild(grid);
+  });
+
+  // Suit & Arcana tags — tag a note here and it cascades onto every card
+  // in that group automatically (e.g. tag "Wands (all cards)" and it shows
+  // up on Ace through King of Wands too).
+  const tagHeading = document.createElement('div');
+  tagHeading.className = 'suit-heading';
+  tagHeading.textContent = 'Suit & Arcana Tags';
+  homeView.appendChild(tagHeading);
+  const tagGrid = document.createElement('div');
+  tagGrid.className = 'grid';
+  GROUP_TAGS.filter(g=>g.name.toLowerCase().includes(filter)).forEach(g=>{
+    const tile = document.createElement('div');
+    tile.className='card-tile';
+    const count = NOTES.filter(note=>note.cardIds.includes(g.id)).length;
+    tile.innerHTML = `<div><div class="card-num">Cascades to every card</div><div class="card-name">${g.name}</div></div>
+      <div class="card-count ${count===0?'empty':''}">${count} note${count===1?'':'s'}</div>`;
+    tile.onclick = ()=> showCard(g.id);
+    tagGrid.appendChild(tile);
+  });
+  homeView.appendChild(tagGrid);
+
+  // General & Themes — free-form pages for suit overviews, numerology, or anything
+  // broader than a single card. Always shown so the option to add one stays visible.
+  const themeHeading = document.createElement('div');
+  themeHeading.className = 'suit-heading';
+  themeHeading.textContent = 'General & Themes';
+  homeView.appendChild(themeHeading);
+  const themeGrid = document.createElement('div');
+  themeGrid.className = 'grid';
+  CUSTOM_PAGES.filter(p=>p.name.toLowerCase().includes(filter)).forEach(p=>{
+    const tile = document.createElement('div');
+    tile.className='card-tile';
+    const n = countForCard(p.id);
+    tile.innerHTML = `<div><div class="card-num">General & Themes</div><div class="card-name">${p.name}</div></div>
+      <div class="card-count ${n===0?'empty':''}">${n} note${n===1?'':'s'}</div>`;
+    tile.onclick = ()=> showCard(p.id);
+    themeGrid.appendChild(tile);
+  });
+  const addTile = document.createElement('div');
+  addTile.className = 'card-tile add-tile';
+  addTile.innerHTML = `<div><div style="font-size:26px; line-height:1;">+</div><div class="card-name" style="font-size:14px; margin-top:6px;">New page</div></div>`;
+  addTile.onclick = addCustomPage;
+  themeGrid.appendChild(addTile);
+  homeView.appendChild(themeGrid);
+}
+
+function addCustomPage(){
+  const name = prompt('Name this page — e.g. "Wands overview", "Numerology: the Fours", "Reversals":');
+  if(!name || !name.trim()) return;
+  const id = 'custom-' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  CUSTOM_PAGES.push({id, name: name.trim()});
+  persistCustomPages();
+  renderHome(document.getElementById('searchBox').value);
+}
+
+function renderCard(cardId){
+  const card = allPages().find(c=>c.id===cardId);
+  document.getElementById('pageEyebrow').textContent = card.eyebrow;
+  document.getElementById('pageTitle').textContent = card.name;
+  document.getElementById('deletePageBtn').style.display = cardId.startsWith('custom-') ? 'inline-block' : 'none';
+  const entries = document.getElementById('entries');
+  entries.innerHTML = '';
+  const list = notesForCard(cardId);
+  if(list.length===0){
+    entries.innerHTML = `<div class="empty-state">No notes yet on this page. Add one, and it'll appear here — and stay here as you add more.</div>`;
+    return;
+  }
+  list.forEach(note=>{
+    const el = document.createElement('div');
+    el.className = 'entry';
+    const otherTags = note.cardIds.filter(id=>id!==cardId).map(id=>allPages().find(c=>c.id===id)?.name).filter(Boolean);
+    el.innerHTML = `<div class="entry-meta">
+        <span><span class="drag-handle" title="Drag to reorder">⠿⠿</span>${otherTags.length? ' Also on: '+otherTags.join(', '):''}</span>
+        <span class="entry-actions"><span data-act="edit">✎ edit</span><span data-act="del">✕ delete</span></span>
+      </div>
+      <div class="entry-body">${note.html}</div>`;
+    el.querySelector('[data-act="edit"]').onclick = ()=> openModal(note.id);
+    el.querySelector('[data-act="del"]').onclick = async ()=>{
+      if(confirm('Delete this note? This removes it from every page it was tagged to.')){
+        NOTES = NOTES.filter(n=>n.id!==note.id);
+        await persistNotes();
+        renderCard(cardId);
+      }
+    };
+    entries.appendChild(el);
+    attachDragHandlers(el, el.querySelector('.drag-handle'), note.id);
+  });
+}
+
+// ---------- drag-to-reorder ----------
+let dragSourceId = null;
+function attachDragHandlers(entryEl, handleEl, noteId){
+  handleEl.draggable = true;
+  handleEl.addEventListener('dragstart', (e)=>{
+    dragSourceId = noteId;
+    e.dataTransfer.effectAllowed = 'move';
+    entryEl.classList.add('dragging');
+  });
+  handleEl.addEventListener('dragend', ()=>{ entryEl.classList.remove('dragging'); dragSourceId = null; });
+  entryEl.addEventListener('dragover', (e)=>{ e.preventDefault(); entryEl.classList.add('drag-over'); });
+  entryEl.addEventListener('dragleave', ()=> entryEl.classList.remove('drag-over'));
+  entryEl.addEventListener('drop', async (e)=>{
+    e.preventDefault();
+    entryEl.classList.remove('drag-over');
+    if(!dragSourceId || dragSourceId===noteId) return;
+    await reorderNotes(currentCardId, dragSourceId, noteId);
+  });
+}
+async function reorderNotes(cardId, sourceId, targetId){
+  const list = notesForCard(cardId); // array of live references into NOTES
+  const fromIdx = list.findIndex(n=>n.id===sourceId);
+  const toIdx = list.findIndex(n=>n.id===targetId);
+  if(fromIdx===-1 || toIdx===-1) return;
+  const [moved] = list.splice(fromIdx,1);
+  list.splice(toIdx,0,moved);
+  list.forEach((n,i)=> n.order = i*10);
+  await persistNotes();
+  renderCard(cardId);
+}
+
+document.getElementById('backLink').onclick = showHome;
+document.getElementById('searchBox').addEventListener('input', e=> renderHome(e.target.value));
+
+// ---------- modal / editor ----------
+const overlay = document.getElementById('overlay');
+const editor = document.getElementById('editor');
+const tagInput = document.getElementById('tagInput');
+const tagDropdown = document.getElementById('tagDropdown');
+const chipsEl = document.getElementById('chips');
+let selectedTags = [];
+
+function toLocalDatetimeValue(ts){
+  const d = new Date(ts);
+  const pad = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function openModal(noteId){
+  editingNoteId = noteId || null;
+  document.getElementById('modalTitle').textContent = noteId ? 'Edit note' : 'New note';
+  document.getElementById('deleteNoteBtn').style.display = noteId ? 'inline-block' : 'none';
+  exitCodeMode(); // always start in rich-text view
+  if(noteId){
+    const note = NOTES.find(n=>n.id===noteId);
+    editor.innerHTML = note.html;
+    selectedTags = [...note.cardIds];
+    document.getElementById('dateInput').value = toLocalDatetimeValue(note.createdAt);
+  } else {
+    editor.innerHTML = '';
+    selectedTags = currentCardId ? [currentCardId] : [];
+    document.getElementById('dateInput').value = toLocalDatetimeValue(Date.now());
+  }
+  renderChips();
+  tagInput.value = '';
+  overlay.classList.add('open');
+  setTimeout(()=>editor.focus(), 50);
+}
+function closeModal(){
+  overlay.classList.remove('open');
+  editingNoteId = null;
+}
+document.getElementById('modalClose').onclick = closeModal;
+overlay.addEventListener('click', e=>{ if(e.target===overlay) closeModal(); });
+
+document.getElementById('fabAdd').onclick = ()=> openModal(null);
+document.getElementById('addNoteForThisCard').onclick = ()=> openModal(null);
+
+function renderChips(){
+  chipsEl.innerHTML = '';
+  selectedTags.forEach(id=>{
+    const card = allPages().find(c=>c.id===id);
+    if(!card) return;
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `${card.name} <span>×</span>`;
+    chip.querySelector('span').onclick = ()=>{
+      selectedTags = selectedTags.filter(t=>t!==id);
+      renderChips();
+    };
+    chipsEl.appendChild(chip);
+  });
+}
+
+tagInput.addEventListener('input', ()=>{
+  const q = tagInput.value.toLowerCase().trim();
+  if(!q){ tagDropdown.classList.remove('open'); return; }
+  const matches = allPages().filter(c=>c.name.toLowerCase().includes(q) && !selectedTags.includes(c.id)).slice(0,8);
+  tagDropdown.innerHTML = '';
+  matches.forEach(c=>{
+    const opt = document.createElement('div');
+    opt.className = 'tag-option';
+    opt.textContent = c.name;
+    opt.onclick = ()=>{
+      selectedTags.push(c.id);
+      renderChips();
+      tagInput.value='';
+      tagDropdown.classList.remove('open');
+    };
+    tagDropdown.appendChild(opt);
+  });
+  const exactMatch = allPages().some(c=>c.name.toLowerCase()===q);
+  if(!exactMatch){
+    const rawName = tagInput.value.trim();
+    const createOpt = document.createElement('div');
+    createOpt.className = 'tag-option';
+    createOpt.style.color = 'var(--oxblood)';
+    createOpt.style.borderTop = matches.length ? '1px solid rgba(33,26,20,0.15)' : 'none';
+    createOpt.textContent = `+ Create new page "${rawName}"`;
+    createOpt.onclick = ()=>{
+      const id = 'custom-' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+      CUSTOM_PAGES.push({id, name: rawName});
+      persistCustomPages();
+      selectedTags.push(id);
+      renderChips();
+      tagInput.value='';
+      tagDropdown.classList.remove('open');
+    };
+    tagDropdown.appendChild(createOpt);
+  }
+  tagDropdown.classList.add('open');
+});
+document.addEventListener('click', e=>{
+  if(!e.target.closest('.tag-select')) tagDropdown.classList.remove('open');
+});
+
+// code view toggle
+const editorCode = document.getElementById('editorCode');
+const codeToggleBtn = document.getElementById('codeToggleBtn');
+let codeMode = false;
+function setFormattingButtonsDisabled(disabled){
+  document.querySelectorAll('.toolbar button:not(#codeToggleBtn)').forEach(b=> b.disabled = disabled);
+}
+function enterCodeMode(){
+  if(codeMode) return;
+  editorCode.value = editor.innerHTML;
+  editor.style.display = 'none';
+  editorCode.style.display = 'block';
+  codeToggleBtn.classList.add('active');
+  setFormattingButtonsDisabled(true);
+  codeMode = true;
+  setTimeout(()=>editorCode.focus(),30);
+}
+function exitCodeMode(){
+  if(!codeMode){ editor.style.display='block'; editorCode.style.display='none'; return; }
+  editor.innerHTML = editorCode.value;
+  editor.style.display = 'block';
+  editorCode.style.display = 'none';
+  codeToggleBtn.classList.remove('active');
+  setFormattingButtonsDisabled(false);
+  codeMode = false;
+}
+codeToggleBtn.addEventListener('click', ()=>{
+  if(codeMode) exitCodeMode(); else enterCodeMode();
+});
+
+// toolbar
+document.querySelectorAll('.toolbar [data-cmd]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    editor.focus();
+    const cmd = btn.dataset.cmd;
+    if(cmd.startsWith('formatBlock:')){
+      document.execCommand('formatBlock', false, cmd.split(':')[1]);
+    } else {
+      document.execCommand(cmd, false, null);
+    }
+  });
+});
+
+// image insert with client-side resize
+document.getElementById('imgBtn').onclick = ()=> document.getElementById('imgFile').click();
+document.getElementById('imgFile').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files || []);
+  for(const file of files){
+    const dataUrl = await resizeImage(file, 900, 0.8);
+    editor.focus();
+    document.execCommand('insertHTML', false, `<img src="${dataUrl}">`);
+  }
+  e.target.value = '';
+});
+function resizeImage(file, maxDim, quality){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let w=img.width, h=img.height;
+        if(w>maxDim || h>maxDim){
+          if(w>h){ h = Math.round(h*maxDim/w); w=maxDim; }
+          else { w = Math.round(w*maxDim/h); h=maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width=w; canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = ev.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// save / delete
+document.getElementById('saveNoteBtn').onclick = async ()=>{
+  const html = (codeMode ? editorCode.value : editor.innerHTML).trim();
+  if(!html || html==='<br>'){ alert('Write something in the note first.'); return; }
+  if(selectedTags.length===0){ alert('Tag this note to at least one card so it knows which page to appear on.'); return; }
+  const dateVal = document.getElementById('dateInput').value;
+  const createdAt = dateVal ? new Date(dateVal).getTime() : Date.now();
+  if(editingNoteId){
+    const note = NOTES.find(n=>n.id===editingNoteId);
+    note.html = html;
+    note.cardIds = [...selectedTags];
+    note.createdAt = createdAt;
+    note.updatedAt = Date.now();
+  } else {
+    NOTES.push({ id: 'n'+Date.now()+Math.random().toString(36).slice(2,7), cardIds:[...selectedTags], html, createdAt, updatedAt: Date.now(), order: Date.now() });
+  }
+  await persistNotes();
+  closeModal();
+  if(currentCardId) renderCard(currentCardId); else renderHome(document.getElementById('searchBox').value);
+};
+document.getElementById('deleteNoteBtn').onclick = async ()=>{
+  if(!editingNoteId) return;
+  if(confirm('Delete this note?')){
+    NOTES = NOTES.filter(n=>n.id!==editingNoteId);
+    await persistNotes();
+    closeModal();
+    if(currentCardId) renderCard(currentCardId); else renderHome();
+  }
+};
+
+// backup export/import
+document.getElementById('exportBtn').onclick = ()=>{
+  const payload = { notes: NOTES, customPages: CUSTOM_PAGES };
+  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'tarot-compendium-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  URL.revokeObjectURL(url);
+};
+document.getElementById('importBtn').onclick = ()=> document.getElementById('importFile').click();
+document.getElementById('importFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (ev)=>{
+    try{
+      const parsed = JSON.parse(ev.target.result);
+      // Support both the current format ({notes, customPages}) and older
+      // backups that were just a plain array of notes.
+      const importedNotes = Array.isArray(parsed) ? parsed : (parsed.notes || []);
+      const importedPages = Array.isArray(parsed) ? [] : (parsed.customPages || []);
+      if(!Array.isArray(importedNotes)) throw new Error('bad format');
+      const noteCount = importedNotes.length;
+      const pageCount = importedPages.length;
+      if(confirm(`Import ${noteCount} notes and ${pageCount} custom page(s)? This merges with what's already here (duplicates by id are skipped).`)){
+        const existingNoteIds = new Set(NOTES.map(n=>n.id));
+        importedNotes.forEach(n=>{ if(!existingNoteIds.has(n.id)) NOTES.push(n); });
+        const existingPageIds = new Set(CUSTOM_PAGES.map(p=>p.id));
+        importedPages.forEach(p=>{ if(!existingPageIds.has(p.id)) CUSTOM_PAGES.push(p); });
+        await persistNotes();
+        if(currentCardId) renderCard(currentCardId); else renderHome();
+        alert('Import complete.');
+      }
+    }catch(err){
+      alert('Could not read that file — make sure it\'s a backup exported from this app.');
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('syncNowBtn').onclick = async ()=>{
+  await syncWithDropbox();
+  if(currentCardId) renderCard(currentCardId); else renderHome(document.getElementById('searchBox').value);
+};
+document.getElementById('dropboxBtn').onclick = async ()=>{
+  if(isDropboxConnected()){
+    if(confirm('Disconnect Dropbox? Your notes stay right here on this device — this just stops syncing to your other devices until you reconnect.')){
+      disconnectDropbox();
+      updateDropboxButton();
+      setSyncStatus('', 'Not connected');
+    }
+  } else {
+    await startDropboxConnect();
+  }
+};
+
+// ---------- init ----------
+(async function init(){
+  loadLocalCache(); // show whatever's saved on this device immediately, no waiting on the network
+  const justConnected = await completeDropboxConnectIfReturning();
+  updateDropboxButton();
+  showHome();
+  if(isDropboxConnected()){
+    await syncWithDropbox();
+    renderHome(document.getElementById('searchBox').value);
+    if(currentCardId) renderCard(currentCardId);
+  } else {
+    setSyncStatus('', 'Not connected');
+  }
+})();
+</script>
+</body>
+</html>
