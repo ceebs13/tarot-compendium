@@ -209,9 +209,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.dragging{ opacity:0.4; }
 .entry.has-images{ border-left-color: var(--sage); }
 .entry-source{
-  margin-top:12px;
-  padding-top:10px;
-  border-top:1px dashed rgba(33,26,20,0.18);
+  margin-top:10px;
   font-size:13px;
   font-style:italic;
   color:#8a7a63;
@@ -230,7 +228,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry-actions span{ cursor:pointer; opacity:0.6; }
 .entry-actions span:hover{ opacity:1; }
 .entry-body{ font-size:16px; line-height:1.65; }
-.entry-body img{ width:200px; max-width:100%; height:auto; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; cursor:zoom-in; }
+.entry-body img{ width:200px; height:345px; max-width:100%; object-fit:fill; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; cursor:zoom-in; }
 .entry-body p{ margin:0 0 10px; }
 .entry-body ul, .entry-body ol{ margin:0 0 10px; padding-left:22px; }
 .entry-body blockquote{
@@ -315,7 +313,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   padding:12px 14px; font-size:15px; line-height:1.6; background:#fff;
   outline:none;
 }
-.editor img{ width:200px; max-width:100%; height:auto; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; }
+.editor img{ width:200px; height:345px; max-width:100%; object-fit:fill; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; }
 .editor:empty:before{ content: attr(data-placeholder); color:#9c9182; }
 
 .modal-footer{
@@ -475,6 +473,11 @@ function allPages(){
 }
 
 // ---------- storage ----------
+function fetchWithTimeout(url, options, timeoutMs=15000){
+  const controller = new AbortController();
+  const id = setTimeout(()=>controller.abort(), timeoutMs);
+  return fetch(url, {...options, signal: controller.signal}).finally(()=> clearTimeout(id));
+}
 // Two layers: localStorage is a fast local cache that always works, even
 // offline. If Dropbox is connected, the same data also lives in one JSON
 // file in the app's own Dropbox folder, so your phone and computer can
@@ -520,7 +523,7 @@ async function completeDropboxConnectIfReturning(){
   if(!code) return false;
   const verifier = sessionStorage.getItem('dbx_verifier');
   try{
-    const resp = await fetch('https://api.dropboxapi.com/oauth2/token', {
+    const resp = await fetchWithTimeout('https://api.dropboxapi.com/oauth2/token', {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body: new URLSearchParams({
@@ -556,7 +559,7 @@ async function getValidDropboxToken(){
   }
   const refreshToken = localStorage.getItem('dbx_refresh_token');
   if(!refreshToken) return null;
-  const resp = await fetch('https://api.dropboxapi.com/oauth2/token', {
+  const resp = await fetchWithTimeout('https://api.dropboxapi.com/oauth2/token', {
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded'},
     body: new URLSearchParams({ grant_type:'refresh_token', refresh_token: refreshToken, client_id: DROPBOX_APP_KEY })
@@ -572,7 +575,7 @@ async function getValidDropboxToken(){
 async function dbxDownload(){
   const token = await getValidDropboxToken();
   if(!token) return null;
-  const resp = await fetch('https://content.dropboxapi.com/2/files/download', {
+  const resp = await fetchWithTimeout('https://content.dropboxapi.com/2/files/download', {
     method:'POST',
     headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({path: DROPBOX_DATA_PATH}) }
   });
@@ -586,7 +589,7 @@ async function dbxDownload(){
 async function dbxUpload(payload){
   const token = await getValidDropboxToken();
   if(!token) throw new Error('Not connected to Dropbox');
-  const resp = await fetch('https://content.dropboxapi.com/2/files/upload', {
+  const resp = await fetchWithTimeout('https://content.dropboxapi.com/2/files/upload', {
     method:'POST',
     headers:{
       'Authorization':'Bearer '+token,
@@ -698,19 +701,26 @@ async function syncWithDropbox(){
   }
 }
 
-// Called after any local change: save the local cache, then push to
-// Dropbox in the background if connected. Only alerts if BOTH fail —
-// if Dropbox succeeds, the note is safe even if the local cache didn't take.
+// Called after any local change: save the local cache (fast, no network),
+// then push to Dropbox in the background if connected — the caller does
+// NOT wait on the network call, so saving a note always feels instant
+// regardless of connection speed. Dropbox syncing quietly catches up
+// afterward, updating the status indicator when it's done.
 async function persistNotes(){
   const localOk = await saveLocalCache();
-  let dropboxOk = false;
   if(isDropboxConnected()){
     setSyncStatus('busy','Saving…');
-    try{ await dbxUpload({notes:NOTES, customPages:CUSTOM_PAGES}); setSyncStatus('ok','Synced'); dropboxOk = true; }
-    catch(e){ console.error(e); setSyncStatus('error','Sync failed — saved locally'); }
-  }
-  if(!localOk && !dropboxOk){
-    alert("Could not save — neither the local cache nor Dropbox could be reached right now. Export a backup immediately if you can, so nothing is lost.");
+    dbxUpload({notes:NOTES, customPages:CUSTOM_PAGES})
+      .then(()=> setSyncStatus('ok','Synced'))
+      .catch(e=>{
+        console.error(e);
+        setSyncStatus('error','Sync failed — saved locally');
+        if(!localOk){
+          alert("Could not save — neither the local cache nor Dropbox could be reached right now. Export a backup immediately if you can, so nothing is lost.");
+        }
+      });
+  } else if(!localOk){
+    alert("Could not save — your browser blocked local storage, and Dropbox isn't connected. Export a backup immediately if you can, so nothing is lost.");
   }
 }
 async function persistCustomPages(){ await persistNotes(); }
@@ -881,7 +891,7 @@ function renderCard(cardId){
         <span class="entry-actions"><span data-act="edit">✎ edit</span><span data-act="del">✕ delete</span></span>
       </div>
       <div class="entry-body">${note.html}</div>
-      ${note.source ? `<div class="entry-source">${renderSource(note.source)}</div>` : ''}`;
+      ${note.source ? `<div class="entry-source">(${renderSource(note.source)})</div>` : ''}`;
     el.querySelector('[data-act="edit"]').onclick = ()=> openModal(note.id);
     el.querySelector('[data-act="del"]').onclick = async ()=>{
       if(confirm('Delete this note? This removes it from every page it was tagged to.')){
