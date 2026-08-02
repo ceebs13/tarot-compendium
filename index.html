@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The Compendium — Tarot Notes</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMzAiIGZpbGw9IiMyNDFiMTYiIHN0cm9rZT0iI2I2OTAzZiIgc3Ryb2tlLXdpZHRoPSIyIi8+PHBhdGggZD0iTTE0IDMyYzYtMTAgMTQtMTUgMTgtMTVzMTIgNSAxOCAxNWMtNiAxMC0xNCAxNS0xOCAxNXMtMTItNS0xOC0xNXoiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2Q0YWM1ZSIgc3Ryb2tlLXdpZHRoPSIyLjUiLz48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSI2IiBmaWxsPSIjZDRhYzVlIi8+PC9zdmc+Cg==">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
 
@@ -206,6 +207,16 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   transition: opacity .15s ease, border-top-color .1s ease;
 }
 .entry.dragging{ opacity:0.4; }
+.entry.has-images{ border-left-color: var(--sage); }
+.entry-source{
+  margin-top:12px;
+  padding-top:10px;
+  border-top:1px dashed rgba(33,26,20,0.18);
+  font-size:13px;
+  font-style:italic;
+  color:#8a7a63;
+}
+.entry-source a{ color:#8a7a63; }
 .entry.drag-over{ border-top:3px solid var(--oxblood); }
 .drag-handle{ cursor:grab; opacity:0.45; margin-right:8px; letter-spacing:-2px; }
 .drag-handle:hover{ opacity:0.8; }
@@ -399,6 +410,9 @@ input[type=file]{ display:none; }
       </div>
       <div class="editor" id="editor" contenteditable="true" data-placeholder="Write your note here…"></div>
       <textarea class="editor" id="editorCode" style="display:none; width:100%; font-family:'JetBrains Mono',monospace; font-size:13px; resize:vertical;"></textarea>
+
+      <label class="field-label" style="margin-top:14px;">Source (optional)</label>
+      <input type="text" class="tag-input" id="sourceInput" placeholder="a book, a website, a teacher, wherever this came from…"/>
     </div>
     <div class="modal-footer">
       <button class="btn ghost" id="deleteNoteBtn" style="display:none;">Delete note</button>
@@ -660,10 +674,28 @@ function relevantTagIdsFor(cardId){
   }
   return ids;
 }
+function noteHasImage(note){
+  return /<img\b/i.test(note.html);
+}
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function renderSource(src){
+  const trimmed = src.trim();
+  if(/^https?:\/\//i.test(trimmed)){
+    return `<a href="${escapeHtml(trimmed)}" target="_blank" rel="noopener">${escapeHtml(trimmed)}</a>`;
+  }
+  return escapeHtml(trimmed);
+}
 function notesForCard(cardId){
   const ids = relevantTagIdsFor(cardId);
   const list = NOTES.filter(n=> n.cardIds.some(id=>ids.includes(id)));
-  return list.sort((a,b)=> (a.order ?? a.createdAt) - (b.order ?? b.createdAt));
+  return list.sort((a,b)=>{
+    const aImg = noteHasImage(a) ? 0 : 1;
+    const bImg = noteHasImage(b) ? 0 : 1;
+    if(aImg !== bImg) return aImg - bImg; // image notes always float to the top
+    return (a.order ?? a.createdAt) - (b.order ?? b.createdAt);
+  });
 }
 function countForCard(cardId){
   return notesForCard(cardId).length;
@@ -791,13 +823,14 @@ function renderCard(cardId){
   }
   list.forEach(note=>{
     const el = document.createElement('div');
-    el.className = 'entry';
+    el.className = 'entry' + (noteHasImage(note) ? ' has-images' : '');
     const otherTags = note.cardIds.filter(id=>id!==cardId).map(id=>allPages().find(c=>c.id===id)?.name).filter(Boolean);
     el.innerHTML = `<div class="entry-meta">
         <span><span class="drag-handle" title="Drag to reorder">⠿⠿</span>${otherTags.length? ' Also on: '+otherTags.join(', '):''}</span>
         <span class="entry-actions"><span data-act="edit">✎ edit</span><span data-act="del">✕ delete</span></span>
       </div>
-      <div class="entry-body">${note.html}</div>`;
+      <div class="entry-body">${note.html}</div>
+      ${note.source ? `<div class="entry-source">${renderSource(note.source)}</div>` : ''}`;
     el.querySelector('[data-act="edit"]').onclick = ()=> openModal(note.id);
     el.querySelector('[data-act="del"]').onclick = async ()=>{
       if(confirm('Delete this note? This removes it from every page it was tagged to.')){
@@ -868,10 +901,12 @@ function openModal(noteId){
     editor.innerHTML = note.html;
     selectedTags = [...note.cardIds];
     document.getElementById('dateInput').value = toLocalDatetimeValue(note.createdAt);
+    document.getElementById('sourceInput').value = note.source || '';
   } else {
     editor.innerHTML = '';
     selectedTags = currentCardId ? [currentCardId] : [];
     document.getElementById('dateInput').value = toLocalDatetimeValue(Date.now());
+    document.getElementById('sourceInput').value = '';
   }
   renderChips();
   tagInput.value = '';
@@ -1001,6 +1036,7 @@ document.getElementById('imgFile').addEventListener('change', async (e)=>{
   e.target.value = '';
 });
 function resizeImage(file, maxDim, quality){
+  const preservesTransparency = /png|gif|webp/.test(file.type);
   return new Promise((resolve,reject)=>{
     const reader = new FileReader();
     reader.onload = (ev)=>{
@@ -1014,7 +1050,10 @@ function resizeImage(file, maxDim, quality){
         const canvas = document.createElement('canvas');
         canvas.width=w; canvas.height=h;
         canvas.getContext('2d').drawImage(img,0,0,w,h);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        // PNGs/GIFs/WebP may have transparent backgrounds — keep them as PNG
+        // so that stays intact. Everything else (photos) goes out as a
+        // smaller JPEG, since there's no transparency to lose there anyway.
+        resolve(preservesTransparency ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', quality));
       };
       img.onerror = reject;
       img.src = ev.target.result;
@@ -1031,14 +1070,16 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   if(selectedTags.length===0){ alert('Tag this note to at least one card so it knows which page to appear on.'); return; }
   const dateVal = document.getElementById('dateInput').value;
   const createdAt = dateVal ? new Date(dateVal).getTime() : Date.now();
+  const source = document.getElementById('sourceInput').value.trim();
   if(editingNoteId){
     const note = NOTES.find(n=>n.id===editingNoteId);
     note.html = html;
     note.cardIds = [...selectedTags];
     note.createdAt = createdAt;
     note.updatedAt = Date.now();
+    note.source = source;
   } else {
-    NOTES.push({ id: 'n'+Date.now()+Math.random().toString(36).slice(2,7), cardIds:[...selectedTags], html, createdAt, updatedAt: Date.now(), order: Date.now() });
+    NOTES.push({ id: 'n'+Date.now()+Math.random().toString(36).slice(2,7), cardIds:[...selectedTags], html, createdAt, updatedAt: Date.now(), order: Date.now(), source });
   }
   await persistNotes();
   closeModal();
