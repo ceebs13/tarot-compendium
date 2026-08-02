@@ -230,7 +230,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry-actions span{ cursor:pointer; opacity:0.6; }
 .entry-actions span:hover{ opacity:1; }
 .entry-body{ font-size:16px; line-height:1.65; }
-.entry-body img{ max-width:100%; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; }
+.entry-body img{ width:200px; max-width:100%; height:auto; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; cursor:zoom-in; }
 .entry-body p{ margin:0 0 10px; }
 .entry-body ul, .entry-body ol{ margin:0 0 10px; padding-left:22px; }
 .entry-body blockquote{
@@ -315,7 +315,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   padding:12px 14px; font-size:15px; line-height:1.6; background:#fff;
   outline:none;
 }
-.editor img{ max-width:100%; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; }
+.editor img{ width:200px; max-width:100%; height:auto; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; }
 .editor:empty:before{ content: attr(data-placeholder); color:#9c9182; }
 
 .modal-footer{
@@ -337,6 +337,14 @@ input[type=file]{ display:none; }
 .fab:hover{ background: var(--brass-bright); }
 
 .hidden{ display:none !important; }
+.lightbox-overlay{
+  display:none; position:fixed; inset:0; z-index:80;
+  background: rgba(10,7,4,0.9);
+  align-items:center; justify-content:center; padding:24px;
+  cursor:zoom-out;
+}
+.lightbox-overlay.open{ display:flex; }
+.lightbox-overlay img{ max-width:90vw; max-height:90vh; border-radius:6px; box-shadow:0 20px 60px rgba(0,0,0,0.6); }
 @media (max-width:600px){
   .page-title{ font-size:28px; }
   .brand span.txt{ display:none; }
@@ -378,6 +386,10 @@ input[type=file]{ display:none; }
 </main>
 
 <button class="fab" id="fabAdd">✎ New note</button>
+
+<div class="lightbox-overlay" id="lightboxOverlay">
+  <img id="lightboxImg" src="" alt=""/>
+</div>
 
 <div class="overlay" id="overlay">
   <div class="modal">
@@ -619,17 +631,51 @@ function mergeData(a, b){
   return { notes: Array.from(noteMap.values()), customPages: Array.from(pageMap.values()) };
 }
 
-function loadLocalCache(){
-  try{ NOTES = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '[]'); }catch(e){ NOTES = []; }
-  try{ CUSTOM_PAGES = JSON.parse(window.localStorage.getItem(CUSTOM_PAGES_KEY) || '[]'); }catch(e){ CUSTOM_PAGES = []; }
+// Local cache now uses IndexedDB rather than localStorage — localStorage
+// caps out at just a few MB, which a handful of image-heavy notes can
+// blow through. IndexedDB's ceiling is vastly higher (typically hundreds
+// of MB or more), so this stops being something you need to think about.
+const IDB_NAME = "tarot-compendium-db";
+const IDB_STORE = "kv";
+function idbOpen(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = ()=> req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
 }
-function saveLocalCache(){
+async function idbSet(key, value){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(IDB_STORE,'readwrite');
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function idbGet(key){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(IDB_STORE,'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+
+async function loadLocalCache(){
+  try{ NOTES = (await idbGet(STORAGE_KEY)) || []; }catch(e){ console.error('Local load failed', e); NOTES = []; }
+  try{ CUSTOM_PAGES = (await idbGet(CUSTOM_PAGES_KEY)) || []; }catch(e){ console.error('Local load failed', e); CUSTOM_PAGES = []; }
+}
+async function saveLocalCache(){
   try{
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(NOTES));
-    window.localStorage.setItem(CUSTOM_PAGES_KEY, JSON.stringify(CUSTOM_PAGES));
+    await idbSet(STORAGE_KEY, NOTES);
+    await idbSet(CUSTOM_PAGES_KEY, CUSTOM_PAGES);
+    return true;
   }catch(e){
     console.error("Local save failed", e);
-    alert("Could not save locally — your browser's storage may be full or disabled. Export a backup now if you can.");
+    return false;
   }
 }
 
@@ -643,7 +689,7 @@ async function syncWithDropbox(){
     const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES}, remote || {notes:[],customPages:[]});
     NOTES = merged.notes;
     CUSTOM_PAGES = merged.customPages;
-    saveLocalCache();
+    await saveLocalCache();
     await dbxUpload(merged);
     setSyncStatus('ok', 'Synced');
   }catch(e){
@@ -652,19 +698,24 @@ async function syncWithDropbox(){
   }
 }
 
-// Called after any local change: save immediately (always works), then
-// push to Dropbox in the background if connected.
+// Called after any local change: save the local cache, then push to
+// Dropbox in the background if connected. Only alerts if BOTH fail —
+// if Dropbox succeeds, the note is safe even if the local cache didn't take.
 async function persistNotes(){
-  saveLocalCache();
+  const localOk = await saveLocalCache();
+  let dropboxOk = false;
   if(isDropboxConnected()){
     setSyncStatus('busy','Saving…');
-    try{ await dbxUpload({notes:NOTES, customPages:CUSTOM_PAGES}); setSyncStatus('ok','Synced'); }
+    try{ await dbxUpload({notes:NOTES, customPages:CUSTOM_PAGES}); setSyncStatus('ok','Synced'); dropboxOk = true; }
     catch(e){ console.error(e); setSyncStatus('error','Sync failed — saved locally'); }
+  }
+  if(!localOk && !dropboxOk){
+    alert("Could not save — neither the local cache nor Dropbox could be reached right now. Export a backup immediately if you can, so nothing is lost.");
   }
 }
 async function persistCustomPages(){ await persistNotes(); }
-async function loadNotes(){ loadLocalCache(); }
-function loadCustomPages(){ /* handled by loadLocalCache() */ }
+async function loadNotes(){ await loadLocalCache(); }
+async function loadCustomPages(){ /* handled by loadLocalCache() */ }
 
 function relevantTagIdsFor(cardId){
   const card = allPages().find(c=>c.id===cardId);
@@ -841,8 +892,23 @@ function renderCard(cardId){
     };
     entries.appendChild(el);
     attachDragHandlers(el, el.querySelector('.drag-handle'), note.id);
+    el.querySelectorAll('.entry-body img').forEach(img=>{
+      img.addEventListener('click', ()=> openLightbox(img.src));
+    });
   });
 }
+
+// ---------- image lightbox ----------
+function openLightbox(src){
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightboxOverlay').classList.add('open');
+}
+function closeLightbox(){
+  document.getElementById('lightboxOverlay').classList.remove('open');
+  document.getElementById('lightboxImg').src = '';
+}
+document.getElementById('lightboxOverlay').addEventListener('click', closeLightbox);
+document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeLightbox(); });
 
 // ---------- drag-to-reorder ----------
 let dragSourceId = null;
@@ -1029,7 +1095,7 @@ document.getElementById('imgBtn').onclick = ()=> document.getElementById('imgFil
 document.getElementById('imgFile').addEventListener('change', async (e)=>{
   const files = Array.from(e.target.files || []);
   for(const file of files){
-    const dataUrl = await resizeImage(file, 900, 0.8);
+    const dataUrl = await resizeImage(file, 600, 0.8);
     editor.focus();
     document.execCommand('insertHTML', false, `<img src="${dataUrl}">`);
   }
@@ -1155,7 +1221,7 @@ document.getElementById('dropboxBtn').onclick = async ()=>{
 
 // ---------- init ----------
 (async function init(){
-  loadLocalCache(); // show whatever's saved on this device immediately, no waiting on the network
+  await loadLocalCache(); // show whatever's saved on this device immediately, no waiting on the network
   const justConnected = await completeDropboxConnectIfReturning();
   updateDropboxButton();
   showHome();
