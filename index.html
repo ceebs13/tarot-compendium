@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Tarot Compendium</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMzAiIGZpbGw9IiMyNDFiMTYiIHN0cm9rZT0iI2I2OTAzZiIgc3Ryb2tlLXdpZHRoPSIyIi8+PHBhdGggZD0iTTE0IDMyYzYtMTAgMTQtMTUgMTgtMTVzMTIgNSAxOCAxNWMtNiAxMC0xNCAxNS0xOCAxNXMtMTItNS0xOC0xNXoiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2Q0YWM1ZSIgc3Ryb2tlLXdpZHRoPSIyLjUiLz48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSI2IiBmaWxsPSIjZDRhYzVlIi8+PC9zdmc+Cg==">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHBhdGggZD0iTTYgMzIgUTMyIDEyIDU4IDMyIFEzMiA1MiA2IDMyIFoiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2Q0YWM1ZSIgc3Ryb2tlLXdpZHRoPSIzIi8+PHBhdGggZD0iTTM4IDIyYTExIDExIDAgMSAwIDAgMjAgMTMuNSAxMy41IDAgMCAxIDAtMjB6IiBmaWxsPSIjZDRhYzVlIi8+PC9zdmc+Cg==">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
 
@@ -53,11 +53,10 @@ body{
   display:flex; align-items:center; gap:10px;
 }
 .brand .mark{
-  width:26px;height:26px;border-radius:50%;
-  border:2px solid var(--brass-bright);
-  display:inline-flex;align-items:center;justify-content:center;
-  font-size:13px; color:var(--brass-bright); font-family:'JetBrains Mono',monospace;
+  width:28px; height:28px;
+  display:inline-flex; align-items:center; justify-content:center;
 }
+.brand .mark svg{ width:100%; height:100%; }
 .search-wrap{ flex:1; max-width:420px; }
 .search-wrap input{
   width:100%; padding:9px 14px;
@@ -210,6 +209,8 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 }
 .entry.dragging{ opacity:0.4; }
 .entry.has-images{ border-left-color: var(--sage); }
+.entry.is-keywords{ border-left-color: var(--oxblood); }
+.entry.is-keywords .entry-body{ font-weight:700; font-size:22px; line-height:1.4; }
 .entry-source{
   margin-top:10px;
   font-size:13px;
@@ -326,6 +327,12 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 input[type=file]{ display:none; }
 
 /* ---------- fab ---------- */
+.app-footer{
+  display:flex; justify-content:center; gap:14px;
+  padding:24px 22px 90px;
+  opacity:0.6;
+}
+.app-footer:hover{ opacity:1; }
 .fab{
   position:fixed; bottom:28px; right:28px; z-index:30;
   background: var(--brass); color: var(--leather);
@@ -354,16 +361,13 @@ input[type=file]{ display:none; }
 <body>
 
 <div class="topbar">
-  <div class="brand"><span class="mark">☾</span><span class="txt">My Tarot Compendium</span></div>
+  <div class="brand"><span class="mark"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M6 32 Q32 12 58 32 Q32 52 6 32 Z" fill="none" stroke="#d4ac5e" stroke-width="3"/><path d="M38 22a11 11 0 1 0 0 20 13.5 13.5 0 0 1 0-20z" fill="#d4ac5e"/></svg></span><span class="txt">My Tarot Compendium</span></div>
   <div class="search-wrap"><input id="searchBox" placeholder="Search cards…"/></div>
   <div class="topbar-actions">
     <span id="noteCount" class="sync-status"></span>
     <span id="syncStatus" class="sync-status"></span>
     <button class="btn ghost small" id="syncNowBtn" style="display:none;">Sync now</button>
     <button class="btn ghost small" id="dropboxBtn">Connect Dropbox</button>
-    <button class="btn ghost small" id="exportBtn">Export backup</button>
-    <button class="btn ghost small" id="importBtn">Import</button>
-    <input type="file" id="importFile" accept=".json"/>
   </div>
 </div>
 
@@ -371,7 +375,13 @@ input[type=file]{ display:none; }
   <div id="homeView"></div>
 
   <div id="cardView">
-    <span class="back-link" id="backLink">← all cards</span>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span class="back-link" id="backLink">← all cards</span>
+      <div class="card-nav" id="cardNav" style="display:none; gap:16px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+        <span class="back-link" id="prevCardLink"></span>
+        <span class="back-link" id="nextCardLink"></span>
+      </div>
+    </div>
     <div class="page-header">
       <div class="page-title-block">
         <div class="eyebrow" id="pageEyebrow"></div>
@@ -385,6 +395,12 @@ input[type=file]{ display:none; }
     <div class="entries" id="entries"></div>
   </div>
 </main>
+
+<footer class="app-footer">
+  <button class="btn ghost small" id="exportBtn">Export backup</button>
+  <button class="btn ghost small" id="importBtn">Import</button>
+  <input type="file" id="importFile" accept=".json"/>
+</footer>
 
 <button class="fab" id="fabAdd">✎ New note</button>
 
@@ -409,7 +425,10 @@ input[type=file]{ display:none; }
       <label class="field-label">Order</label>
       <input type="number" class="tag-input" id="orderInput" placeholder="lower numbers show first — leave blank to just add to the end"/>
       <label style="display:flex; align-items:center; gap:8px; margin:10px 0 4px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
-        <input type="checkbox" id="pinFirstInput" style="width:auto;"/> Always show first (after any images)
+        <input type="checkbox" id="keywordsInput" style="width:auto;"/> Keywords note (bold, larger, floats right below any images)
+      </label>
+      <label style="display:flex; align-items:center; gap:8px; margin:4px 0 4px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+        <input type="checkbox" id="pinFirstInput" style="width:auto;"/> Always show first (after any images/keywords)
       </label>
 
       <label class="field-label" style="margin-top:10px;">Note</label>
@@ -481,10 +500,25 @@ function allPages(){
 }
 
 // ---------- storage ----------
-function fetchWithTimeout(url, options, timeoutMs=15000){
+function fetchWithTimeout(url, options, timeoutMs=30000){
   const controller = new AbortController();
   const id = setTimeout(()=>controller.abort(), timeoutMs);
   return fetch(url, {...options, signal: controller.signal}).finally(()=> clearTimeout(id));
+}
+// Retries a Dropbox call a couple of times with a short pause between —
+// useful on higher-latency connections (cellular, satellite, antenna-based
+// links) where a single attempt can time out even though the connection
+// is fine overall.
+async function withRetry(fn, retries=2, delayMs=4000){
+  let lastErr;
+  for(let attempt=0; attempt<=retries; attempt++){
+    try{ return await fn(); }
+    catch(e){
+      lastErr = e;
+      if(attempt < retries) await new Promise(r=>setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
 }
 // Two layers: localStorage is a fast local cache that always works, even
 // offline. If Dropbox is connected, the same data also lives in one JSON
@@ -696,12 +730,12 @@ async function syncWithDropbox(){
   if(!isDropboxConnected()) return;
   setSyncStatus('busy', 'Syncing…');
   try{
-    const remote = await dbxDownload();
+    const remote = await withRetry(()=>dbxDownload());
     const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES}, remote || {notes:[],customPages:[]});
     NOTES = merged.notes;
     CUSTOM_PAGES = merged.customPages;
     await saveLocalCache();
-    await dbxUpload(merged);
+    await withRetry(()=>dbxUpload(merged));
     setSyncStatus('ok', 'Synced');
   }catch(e){
     console.error('Sync failed', e);
@@ -718,7 +752,7 @@ async function persistNotes(){
   const localOk = await saveLocalCache();
   if(isDropboxConnected()){
     setSyncStatus('busy','Saving…');
-    dbxUpload({notes:NOTES, customPages:CUSTOM_PAGES})
+    withRetry(()=>dbxUpload({notes:NOTES, customPages:CUSTOM_PAGES}))
       .then(()=> setSyncStatus('ok','Synced'))
       .catch(e=>{
         console.error(e);
@@ -757,8 +791,9 @@ function renderSourceLine(note){
 }
 function groupRank(note){
   if(noteHasImage(note)) return 0;
-  if(note.pinnedFirst) return 1;
-  return 2;
+  if(note.isKeywords) return 1;
+  if(note.pinnedFirst) return 2;
+  return 3;
 }
 function notesForCard(cardId){
   const ids = relevantTagIdsFor(cardId);
@@ -917,6 +952,21 @@ function renderCard(cardId){
   });
   document.getElementById('pageTitle').textContent = card.name;
   document.getElementById('deletePageBtn').style.display = cardId.startsWith('custom-') ? 'inline-block' : 'none';
+
+  const cardNav = document.getElementById('cardNav');
+  const deckIndex = CARDS.findIndex(c=>c.id===cardId);
+  if(deckIndex !== -1){
+    const prevCard = CARDS[(deckIndex - 1 + CARDS.length) % CARDS.length];
+    const nextCard = CARDS[(deckIndex + 1) % CARDS.length];
+    document.getElementById('prevCardLink').textContent = '‹ ' + prevCard.name;
+    document.getElementById('nextCardLink').textContent = nextCard.name + ' ›';
+    document.getElementById('prevCardLink').onclick = ()=> showCard(prevCard.id);
+    document.getElementById('nextCardLink').onclick = ()=> showCard(nextCard.id);
+    cardNav.style.display = 'flex';
+  } else {
+    cardNav.style.display = 'none'; // group-tag and custom pages don't have a natural next/prev
+  }
+
   const entries = document.getElementById('entries');
   entries.innerHTML = '';
   const list = notesForCard(cardId);
@@ -926,7 +976,7 @@ function renderCard(cardId){
   }
   list.forEach(note=>{
     const el = document.createElement('div');
-    el.className = 'entry' + (noteHasImage(note) ? ' has-images' : '');
+    el.className = 'entry' + (noteHasImage(note) ? ' has-images' : '') + (note.isKeywords ? ' is-keywords' : '');
     const otherTags = note.cardIds.filter(id=>id!==cardId).map(id=>allPages().find(c=>c.id===id)?.name).filter(Boolean);
     el.innerHTML = `<div class="entry-meta">
         <span><span class="drag-handle" title="Drag to reorder">⠿⠿</span>${otherTags.length? ' Also on: '+otherTags.join(', '):''}</span>
@@ -1016,6 +1066,7 @@ function openModal(noteId){
     document.getElementById('sourceInput').value = note.source || '';
     document.getElementById('sourceLinkInput').value = note.sourceLink || '';
     document.getElementById('orderInput').value = (note.order !== undefined && note.order !== null) ? note.order : '';
+    document.getElementById('keywordsInput').checked = !!note.isKeywords;
     document.getElementById('pinFirstInput').checked = !!note.pinnedFirst;
   } else {
     editor.innerHTML = '';
@@ -1023,6 +1074,7 @@ function openModal(noteId){
     document.getElementById('sourceInput').value = '';
     document.getElementById('sourceLinkInput').value = '';
     document.getElementById('orderInput').value = '';
+    document.getElementById('keywordsInput').checked = false;
     document.getElementById('pinFirstInput').checked = false;
   }
   renderChips();
@@ -1188,6 +1240,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   const source = document.getElementById('sourceInput').value.trim();
   const sourceLink = document.getElementById('sourceLinkInput').value.trim();
   const orderVal = document.getElementById('orderInput').value.trim();
+  const isKeywords = document.getElementById('keywordsInput').checked;
   const pinnedFirst = document.getElementById('pinFirstInput').checked;
   if(editingNoteId){
     const note = NOTES.find(n=>n.id===editingNoteId);
@@ -1196,6 +1249,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
     note.updatedAt = Date.now();
     note.source = source;
     note.sourceLink = sourceLink;
+    note.isKeywords = isKeywords;
     note.pinnedFirst = pinnedFirst;
     if(orderVal !== '') note.order = Number(orderVal);
   } else {
@@ -1204,7 +1258,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
       cardIds:[...selectedTags], html,
       createdAt: Date.now(), updatedAt: Date.now(),
       order: orderVal !== '' ? Number(orderVal) : Date.now(),
-      pinnedFirst, source, sourceLink
+      isKeywords, pinnedFirst, source, sourceLink
     });
   }
   await persistNotes();
