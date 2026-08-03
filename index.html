@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Compendium — Tarot Notes</title>
+<title>My Tarot Compendium</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMzAiIGZpbGw9IiMyNDFiMTYiIHN0cm9rZT0iI2I2OTAzZiIgc3Ryb2tlLXdpZHRoPSIyIi8+PHBhdGggZD0iTTE0IDMyYzYtMTAgMTQtMTUgMTgtMTVzMTIgNSAxOCAxNWMtNiAxMC0xNCAxNS0xOCAxNXMtMTItNS0xOC0xNXoiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2Q0YWM1ZSIgc3Ryb2tlLXdpZHRoPSIyLjUiLz48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSI2IiBmaWxsPSIjZDRhYzVlIi8+PC9zdmc+Cg==">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -193,6 +193,8 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   font-family:'JetBrains Mono',monospace; font-size:12px;
   color: var(--brass-bright); opacity:0.75; letter-spacing:0.1em;
 }
+.eyebrow-link{ color: var(--brass-bright); text-decoration:underline; cursor:pointer; opacity:1; }
+.eyebrow-link:hover{ color:#fff; }
 .page-title{
   font-family:'Fraunces', serif; font-weight:700;
   font-size:38px; color: var(--parchment);
@@ -352,9 +354,10 @@ input[type=file]{ display:none; }
 <body>
 
 <div class="topbar">
-  <div class="brand"><span class="mark">☾</span><span class="txt">The Compendium</span></div>
+  <div class="brand"><span class="mark">☾</span><span class="txt">My Tarot Compendium</span></div>
   <div class="search-wrap"><input id="searchBox" placeholder="Search cards…"/></div>
   <div class="topbar-actions">
+    <span id="noteCount" class="sync-status"></span>
     <span id="syncStatus" class="sync-status"></span>
     <button class="btn ghost small" id="syncNowBtn" style="display:none;">Sync now</button>
     <button class="btn ghost small" id="dropboxBtn">Connect Dropbox</button>
@@ -403,10 +406,13 @@ input[type=file]{ display:none; }
         <div class="chips" id="chips"></div>
       </div>
 
-      <label class="field-label">Date added</label>
-      <input type="datetime-local" class="tag-input" id="dateInput" style="margin-bottom:14px;"/>
+      <label class="field-label">Order</label>
+      <input type="number" class="tag-input" id="orderInput" placeholder="lower numbers show first — leave blank to just add to the end"/>
+      <label style="display:flex; align-items:center; gap:8px; margin:10px 0 4px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+        <input type="checkbox" id="pinFirstInput" style="width:auto;"/> Always show first (after any images)
+      </label>
 
-      <label class="field-label">Note</label>
+      <label class="field-label" style="margin-top:10px;">Note</label>
       <div class="toolbar">
         <button class="b" data-cmd="bold" title="Bold">B</button>
         <button class="i" data-cmd="italic" title="Italic">I</button>
@@ -421,8 +427,10 @@ input[type=file]{ display:none; }
       <div class="editor" id="editor" contenteditable="true" data-placeholder="Write your note here…"></div>
       <textarea class="editor" id="editorCode" style="display:none; width:100%; font-family:'JetBrains Mono',monospace; font-size:13px; resize:vertical;"></textarea>
 
-      <label class="field-label" style="margin-top:14px;">Source (optional)</label>
-      <input type="text" class="tag-input" id="sourceInput" placeholder="a book, a website, a teacher, wherever this came from…"/>
+      <label class="field-label" style="margin-top:14px;">Source</label>
+      <input type="text" class="tag-input" id="sourceInput" placeholder="optional"/>
+      <label class="field-label" style="margin-top:10px;">Link</label>
+      <input type="text" class="tag-input" id="sourceLinkInput" placeholder="https://…"/>
     </div>
     <div class="modal-footer">
       <button class="btn ghost" id="deleteNoteBtn" style="display:none;">Delete note</button>
@@ -741,20 +749,23 @@ function noteHasImage(note){
 function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-function renderSource(src){
-  const trimmed = src.trim();
-  if(/^https?:\/\//i.test(trimmed)){
-    return `<a href="${escapeHtml(trimmed)}" target="_blank" rel="noopener">${escapeHtml(trimmed)}</a>`;
-  }
-  return escapeHtml(trimmed);
+function renderSourceLine(note){
+  const parts = [];
+  if(note.source) parts.push(escapeHtml(note.source));
+  if(note.sourceLink) parts.push(`<a href="${escapeHtml(note.sourceLink)}" target="_blank" rel="noopener">${escapeHtml(note.sourceLink)}</a>`);
+  return parts.join(' · ');
+}
+function groupRank(note){
+  if(noteHasImage(note)) return 0;
+  if(note.pinnedFirst) return 1;
+  return 2;
 }
 function notesForCard(cardId){
   const ids = relevantTagIdsFor(cardId);
   const list = NOTES.filter(n=> n.cardIds.some(id=>ids.includes(id)));
   return list.sort((a,b)=>{
-    const aImg = noteHasImage(a) ? 0 : 1;
-    const bImg = noteHasImage(b) ? 0 : 1;
-    if(aImg !== bImg) return aImg - bImg; // image notes always float to the top
+    const ra = groupRank(a), rb = groupRank(b);
+    if(ra !== rb) return ra - rb; // images first, then pinned-first notes, then everything else
     return (a.order ?? a.createdAt) - (b.order ?? b.createdAt);
   });
 }
@@ -769,18 +780,30 @@ let editingNoteId = null;
 const homeView = document.getElementById('homeView');
 const cardView = document.getElementById('cardView');
 
-function showHome(){
+function showHome(push=true){
   currentCardId = null;
   cardView.style.display = 'none';
   homeView.style.display = 'block';
   renderHome();
+  if(push) history.pushState({view:'home'}, '', location.pathname + location.search);
 }
-function showCard(cardId){
+function showCard(cardId, push=true){
   currentCardId = cardId;
   homeView.style.display = 'none';
   cardView.style.display = 'block';
   renderCard(cardId);
+  if(push) history.pushState({view:'card', cardId}, '', '#'+encodeURIComponent(cardId));
 }
+// Makes the browser's own back/forward buttons move between pages inside
+// the app, instead of leaving it entirely.
+window.addEventListener('popstate', (e)=>{
+  const state = e.state;
+  if(state && state.view==='card' && state.cardId){
+    showCard(state.cardId, false);
+  } else {
+    showHome(false);
+  }
+});
 document.getElementById('deletePageBtn').onclick = ()=>{
   if(!currentCardId) return;
   const page = CUSTOM_PAGES.find(p=>p.id===currentCardId);
@@ -792,7 +815,12 @@ document.getElementById('deletePageBtn').onclick = ()=>{
   }
 };
 
+function updateNoteCount(){
+  const el = document.getElementById('noteCount');
+  if(el) el.innerHTML = `<span class="dot" style="background:var(--brass);"></span>${NOTES.length} note${NOTES.length===1?'':'s'}`;
+}
 function renderHome(filter){
+  updateNoteCount();
   filter = (filter||'').toLowerCase();
   homeView.innerHTML = '';
   GROUP_ORDER.forEach(group=>{
@@ -870,9 +898,23 @@ function addCustomPage(){
   renderHome(document.getElementById('searchBox').value);
 }
 
+function eyebrowHtml(card){
+  if(card.group === 'Major Arcana'){
+    const num = (card.eyebrow.split('·')[1] || '').trim();
+    return `<a href="javascript:void(0)" class="eyebrow-link" data-goto="${groupSlug('Major Arcana')}">Major Arcana</a> · ${escapeHtml(num)}`;
+  }
+  if(GROUP_ORDER.includes(card.group)){
+    return `Minor Arcana · <a href="javascript:void(0)" class="eyebrow-link" data-goto="${groupSlug(card.group)}">${escapeHtml(card.group)}</a>`;
+  }
+  return escapeHtml(card.eyebrow);
+}
 function renderCard(cardId){
+  updateNoteCount();
   const card = allPages().find(c=>c.id===cardId);
-  document.getElementById('pageEyebrow').textContent = card.eyebrow;
+  document.getElementById('pageEyebrow').innerHTML = eyebrowHtml(card);
+  document.getElementById('pageEyebrow').querySelectorAll('.eyebrow-link').forEach(a=>{
+    a.addEventListener('click', ()=> showCard(a.dataset.goto));
+  });
   document.getElementById('pageTitle').textContent = card.name;
   document.getElementById('deletePageBtn').style.display = cardId.startsWith('custom-') ? 'inline-block' : 'none';
   const entries = document.getElementById('entries');
@@ -891,7 +933,7 @@ function renderCard(cardId){
         <span class="entry-actions"><span data-act="edit">✎ edit</span><span data-act="del">✕ delete</span></span>
       </div>
       <div class="entry-body">${note.html}</div>
-      ${note.source ? `<div class="entry-source">(${renderSource(note.source)})</div>` : ''}`;
+      ${(note.source || note.sourceLink) ? `<div class="entry-source">(${renderSourceLine(note)})</div>` : ''}`;
     el.querySelector('[data-act="edit"]').onclick = ()=> openModal(note.id);
     el.querySelector('[data-act="del"]').onclick = async ()=>{
       if(confirm('Delete this note? This removes it from every page it was tagged to.')){
@@ -962,11 +1004,6 @@ const tagDropdown = document.getElementById('tagDropdown');
 const chipsEl = document.getElementById('chips');
 let selectedTags = [];
 
-function toLocalDatetimeValue(ts){
-  const d = new Date(ts);
-  const pad = n=>String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 function openModal(noteId){
   editingNoteId = noteId || null;
   document.getElementById('modalTitle').textContent = noteId ? 'Edit note' : 'New note';
@@ -976,13 +1013,17 @@ function openModal(noteId){
     const note = NOTES.find(n=>n.id===noteId);
     editor.innerHTML = note.html;
     selectedTags = [...note.cardIds];
-    document.getElementById('dateInput').value = toLocalDatetimeValue(note.createdAt);
     document.getElementById('sourceInput').value = note.source || '';
+    document.getElementById('sourceLinkInput').value = note.sourceLink || '';
+    document.getElementById('orderInput').value = (note.order !== undefined && note.order !== null) ? note.order : '';
+    document.getElementById('pinFirstInput').checked = !!note.pinnedFirst;
   } else {
     editor.innerHTML = '';
     selectedTags = currentCardId ? [currentCardId] : [];
-    document.getElementById('dateInput').value = toLocalDatetimeValue(Date.now());
     document.getElementById('sourceInput').value = '';
+    document.getElementById('sourceLinkInput').value = '';
+    document.getElementById('orderInput').value = '';
+    document.getElementById('pinFirstInput').checked = false;
   }
   renderChips();
   tagInput.value = '';
@@ -1144,18 +1185,27 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   const html = (codeMode ? editorCode.value : editor.innerHTML).trim();
   if(!html || html==='<br>'){ alert('Write something in the note first.'); return; }
   if(selectedTags.length===0){ alert('Tag this note to at least one card so it knows which page to appear on.'); return; }
-  const dateVal = document.getElementById('dateInput').value;
-  const createdAt = dateVal ? new Date(dateVal).getTime() : Date.now();
   const source = document.getElementById('sourceInput').value.trim();
+  const sourceLink = document.getElementById('sourceLinkInput').value.trim();
+  const orderVal = document.getElementById('orderInput').value.trim();
+  const pinnedFirst = document.getElementById('pinFirstInput').checked;
   if(editingNoteId){
     const note = NOTES.find(n=>n.id===editingNoteId);
     note.html = html;
     note.cardIds = [...selectedTags];
-    note.createdAt = createdAt;
     note.updatedAt = Date.now();
     note.source = source;
+    note.sourceLink = sourceLink;
+    note.pinnedFirst = pinnedFirst;
+    if(orderVal !== '') note.order = Number(orderVal);
   } else {
-    NOTES.push({ id: 'n'+Date.now()+Math.random().toString(36).slice(2,7), cardIds:[...selectedTags], html, createdAt, updatedAt: Date.now(), order: Date.now(), source });
+    NOTES.push({
+      id: 'n'+Date.now()+Math.random().toString(36).slice(2,7),
+      cardIds:[...selectedTags], html,
+      createdAt: Date.now(), updatedAt: Date.now(),
+      order: orderVal !== '' ? Number(orderVal) : Date.now(),
+      pinnedFirst, source, sourceLink
+    });
   }
   await persistNotes();
   closeModal();
@@ -1230,11 +1280,22 @@ document.getElementById('dropboxBtn').onclick = async ()=>{
 };
 
 // ---------- init ----------
+function bootstrapRoute(){
+  const hash = decodeURIComponent(location.hash.replace(/^#/, ''));
+  if(hash && allPages().some(c=>c.id===hash)){
+    showCard(hash, false);
+    history.replaceState({view:'card', cardId:hash}, '', location.hash);
+  } else {
+    showHome(false);
+    history.replaceState({view:'home'}, '', location.pathname + location.search);
+  }
+}
+
 (async function init(){
   await loadLocalCache(); // show whatever's saved on this device immediately, no waiting on the network
   const justConnected = await completeDropboxConnectIfReturning();
   updateDropboxButton();
-  showHome();
+  bootstrapRoute();
   if(isDropboxConnected()){
     await syncWithDropbox();
     renderHome(document.getElementById('searchBox').value);
