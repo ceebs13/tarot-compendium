@@ -210,7 +210,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.dragging{ opacity:0.4; }
 .entry.has-images{ border-left-color: var(--sage); }
 .entry.is-keywords{ border-left-color: var(--oxblood); }
-.entry.is-keywords .entry-body{ font-weight:700; font-size:27px; line-height:1.4; }
+.entry.is-keywords .entry-body{ font-weight:700; font-size:23px; line-height:1.4; }
 .entry-source{
   margin-top:10px;
   font-size:13px;
@@ -328,7 +328,7 @@ input[type=file]{ display:none; }
 
 /* ---------- fab ---------- */
 .app-footer{
-  display:flex; justify-content:center; gap:14px;
+  display:flex; justify-content:center; align-items:center; gap:14px;
   padding:24px 22px 90px;
   opacity:0.6;
 }
@@ -408,7 +408,7 @@ input[type=file]{ display:none; }
 </main>
 
 <footer class="app-footer">
-  <span class="back-link" id="sourcesLink" style="cursor:pointer;">Sources</span>
+  <span class="back-link" id="sourcesLink" style="cursor:pointer; margin-bottom:0;">Sources</span>
   <button class="btn ghost small" id="exportBtn">Export backup</button>
   <button class="btn ghost small" id="importBtn">Import</button>
   <input type="file" id="importFile" accept=".json"/>
@@ -1022,10 +1022,14 @@ function eyebrowHtml(card){
 function computeSourcesIndex(){
   const map = new Map();
   NOTES.forEach(note=>{
-    if(!note.source && !note.sourceLink) return;
-    const key = (note.source||'').trim().toLowerCase() + '|' + (note.sourceLink||'').trim().toLowerCase();
-    if(!map.has(key)) map.set(key, {source: (note.source||'').trim(), sourceLink: (note.sourceLink||'').trim(), pageIds: new Set()});
+    const source = (note.source||'').trim();
+    const link = (note.sourceLink||'').trim();
+    if(!source && !link) return;
+    const title = source || link; // link-only notes use the link itself as the heading
+    const key = title.toLowerCase();
+    if(!map.has(key)) map.set(key, {title, links: new Set(), pageIds: new Set()});
     const entry = map.get(key);
+    if(source && link) entry.links.add(link); // only nest a link when there's a separate title to nest it under
     note.cardIds.forEach(id=> entry.pageIds.add(id));
   });
   return Array.from(map.values());
@@ -1033,7 +1037,7 @@ function computeSourcesIndex(){
 function renderSources(){
   updateNoteCount();
   const list = document.getElementById('sourcesList');
-  const entries = computeSourcesIndex().sort((a,b)=> (a.source||a.sourceLink).localeCompare(b.source||b.sourceLink, undefined, {sensitivity:'base'}));
+  const entries = computeSourcesIndex().sort((a,b)=> a.title.localeCompare(b.title, undefined, {sensitivity:'base'}));
   list.innerHTML = '';
   if(entries.length===0){
     list.innerHTML = `<div class="empty-state">No sources logged yet. Add a Source or Link to any note and it'll show up here automatically.</div>`;
@@ -1042,16 +1046,16 @@ function renderSources(){
   entries.forEach(entry=>{
     const el = document.createElement('div');
     el.className = 'entry';
-    const sourceHtml = [
-      entry.source ? escapeHtml(entry.source) : '',
-      entry.sourceLink ? `<a href="${escapeHtml(entry.sourceLink)}" target="_blank" rel="noopener">${escapeHtml(entry.sourceLink)}</a>` : ''
-    ].filter(Boolean).join(' · ');
+    const linksHtml = entry.links.size
+      ? Array.from(entry.links).map(link=>`<div><a href="${escapeHtml(link)}" target="_blank" rel="noopener">${escapeHtml(link)}</a></div>`).join('')
+      : '';
     const pageLinksHtml = Array.from(entry.pageIds).map(id=>{
       const page = allPages().find(p=>p.id===id);
       return page ? `<span class="eyebrow-link source-page-link" data-goto="${id}">${escapeHtml(page.name)}</span>` : '';
     }).filter(Boolean).join(', ');
-    el.innerHTML = `<div class="entry-body" style="font-size:17px;">${sourceHtml}</div>
-      <div class="entry-source" style="margin-top:8px; font-style:normal;">Appears on: ${pageLinksHtml || '—'}</div>`;
+    el.innerHTML = `<div class="entry-body" style="font-size:17px; font-weight:600;">${escapeHtml(entry.title)}</div>
+      ${linksHtml ? `<div class="entry-source" style="margin:4px 0 8px; font-style:normal;">${linksHtml}</div>` : ''}
+      <div class="entry-source" style="font-style:normal;">Appears on: ${pageLinksHtml || '—'}</div>`;
     list.appendChild(el);
     el.querySelectorAll('.source-page-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
   });
