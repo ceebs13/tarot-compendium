@@ -210,7 +210,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.dragging{ opacity:0.4; }
 .entry.has-images{ border-left-color: var(--sage); }
 .entry.is-keywords{ border-left-color: var(--oxblood); }
-.entry.is-keywords .entry-body{ font-weight:700; font-size:23px; line-height:1.4; }
+.entry.is-keywords .entry-body{ font-weight:700; font-size:20px; line-height:1.4; }
 .entry-source{
   margin-top:10px;
   font-size:13px;
@@ -535,11 +535,22 @@ const PIP_RANK_TAGS = PIP_RANKS.map((r,i) => ({
   pipNumber: i+1
 }));
 
+// Astrological Associations: one page per planet. No automatic cascade —
+// correspondences vary by tradition, so this is purely a place to tag a
+// note to a planet AND whichever card(s) she associates with it herself.
+const PLANETS = ["Sun","Moon","Mercury","Venus","Mars","Jupiter","Saturn","Uranus","Neptune","Pluto"];
+const PLANET_TAGS = PLANETS.map(p => ({
+  id: 'planet-' + p.toLowerCase(),
+  name: p,
+  eyebrow: 'Astrological Association',
+  group: 'Astrological Associations'
+}));
+
 // ---------- custom / broader pages (suit overviews, numerology, themes, etc.) ----------
 let CUSTOM_PAGES = []; // {id, name}
 
 function allPages(){
-  return CARDS.concat(GROUP_TAGS).concat([COURT_TAG, PIP_OVERVIEW_TAG]).concat(PIP_RANK_TAGS)
+  return CARDS.concat(GROUP_TAGS).concat([COURT_TAG, PIP_OVERVIEW_TAG]).concat(PIP_RANK_TAGS).concat(PLANET_TAGS)
     .concat(CUSTOM_PAGES.map(p=>({id:p.id, name:p.name, eyebrow:"General & Themes", group:"General & Themes"})));
 }
 
@@ -974,6 +985,25 @@ function renderHome(filter){
     tagGrid.appendChild(tile);
   });
   homeView.appendChild(tagGrid);
+
+  // Astrological Associations — one page per planet, manually tagged
+  // alongside whichever cards she associates with it.
+  const planetHeading = document.createElement('div');
+  planetHeading.className = 'suit-heading';
+  planetHeading.textContent = 'Astrological Associations';
+  homeView.appendChild(planetHeading);
+  const planetGrid = document.createElement('div');
+  planetGrid.className = 'grid';
+  PLANET_TAGS.filter(p=>p.name.toLowerCase().includes(filter)).forEach(p=>{
+    const tile = document.createElement('div');
+    tile.className='card-tile';
+    const count = countForCard(p.id);
+    tile.innerHTML = `<div><div class="card-num">${p.eyebrow}</div><div class="card-name">${p.name}</div></div>
+      <div class="card-count ${count===0?'empty':''}">${count} note${count===1?'':'s'}</div>`;
+    tile.onclick = ()=> showCard(p.id);
+    planetGrid.appendChild(tile);
+  });
+  homeView.appendChild(planetGrid);
 
   // General & Themes — free-form pages for suit overviews, numerology, or anything
   // broader than a single card. Always shown so the option to add one stays visible.
