@@ -199,6 +199,25 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   font-size:38px; color: var(--parchment);
 }
 .entries{ display:flex; flex-direction:column; gap:18px; }
+.card-fields{
+  background: var(--parchment);
+  border-radius:8px;
+  padding:16px 22px;
+  margin-bottom:22px;
+  box-shadow: var(--shadow);
+  border-left: 4px solid var(--sage);
+  display:flex; flex-direction:column; gap:12px;
+}
+.card-field label{
+  display:block; font-family:'JetBrains Mono',monospace; font-size:11px;
+  text-transform:uppercase; letter-spacing:0.08em; color:#5c4f3d; margin-bottom:4px;
+}
+.card-field input, .card-field textarea{
+  width:100%; padding:7px 10px; border:1px solid rgba(33,26,20,0.2);
+  border-radius:5px; font-family:'Source Serif 4',serif; font-size:14px;
+  background:#fff; resize:vertical;
+}
+.card-field input:focus, .card-field textarea:focus{ outline:none; border-color: var(--brass); }
 .entry{
   background: var(--parchment);
   border-radius:8px;
@@ -209,8 +228,6 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 }
 .entry.dragging{ opacity:0.4; }
 .entry.has-images{ border-left-color: var(--sage); }
-.entry.is-keywords{ border-left-color: var(--oxblood); }
-.entry.is-keywords .entry-body{ font-weight:700; font-size:20px; line-height:1.4; }
 .entry-source{
   margin-top:10px;
   font-size:13px;
@@ -398,6 +415,20 @@ input[type=file]{ display:none; }
         <button class="btn primary" id="addNoteForThisCard">+ Add note to this page</button>
       </div>
     </div>
+    <div class="card-fields" id="cardFields" style="display:none;">
+      <div class="card-field">
+        <label for="cardKeywordsInput">Keywords</label>
+        <input type="text" id="cardKeywordsInput" placeholder="e.g. new beginnings, spontaneity, risk"/>
+      </div>
+      <div class="card-field">
+        <label for="cardAstroInput">Astrology</label>
+        <input type="text" id="cardAstroInput" placeholder="e.g. Uranus, or Moon in Libra"/>
+      </div>
+      <div class="card-field">
+        <label for="cardGuidanceInput">Guidance</label>
+        <textarea id="cardGuidanceInput" rows="2" placeholder="A short keynote meaning or interpretation…"></textarea>
+      </div>
+    </div>
     <div class="entries" id="entries"></div>
   </div>
 
@@ -455,10 +486,7 @@ input[type=file]{ display:none; }
       <label class="field-label">Order</label>
       <input type="number" class="tag-input" id="orderInput" placeholder="lower numbers show first — leave blank to just add to the end"/>
       <label style="display:flex; align-items:center; gap:8px; margin:10px 0 4px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
-        <input type="checkbox" id="keywordsInput" style="width:auto;"/> Keywords
-      </label>
-      <label style="display:flex; align-items:center; gap:8px; margin:4px 0 4px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
-        <input type="checkbox" id="pinFirstInput" style="width:auto;"/> Always show first (after any images/keywords)
+        <input type="checkbox" id="pinFirstInput" style="width:auto;"/> Always show first (after any images)
       </label>
 
       <label class="field-label" style="margin-top:10px;">Note</label>
@@ -480,9 +508,6 @@ input[type=file]{ display:none; }
       <input type="text" class="tag-input" id="sourceInput" placeholder="optional"/>
       <label class="field-label" style="margin-top:10px;">Link</label>
       <input type="text" class="tag-input" id="sourceLinkInput" placeholder="https://…"/>
-
-      <label class="field-label" style="margin-top:10px;">Astrology</label>
-      <input type="text" class="tag-input" id="astroInput" placeholder="e.g. Aquarius, or Moon in Libra"/>
     </div>
     <div class="modal-footer">
       <button class="btn ghost" id="deleteNoteBtn" style="display:none;">Delete note</button>
@@ -559,6 +584,11 @@ const PIP_RANK_TAGS = PIP_RANKS.map((r,i) => ({
 // ---------- custom / broader pages (suit overviews, numerology, themes, etc.) ----------
 let CUSTOM_PAGES = []; // {id, name}
 
+// Dedicated per-card fields — Astrology, Keywords, Guidance — separate from
+// the notes stream. One entry per real deck card, edited directly on that
+// card's page rather than through the note composer.
+let CARD_FIELDS = {}; // { [cardId]: {astro, keywords, guidance, updatedAt} }
+
 function allPages(){
   return CARDS.concat(GROUP_TAGS).concat([COURT_TAG, PIP_OVERVIEW_TAG]).concat(PIP_RANK_TAGS)
     .concat(CUSTOM_PAGES.map(p=>({id:p.id, name:p.name, eyebrow:"General & Themes", group:"General & Themes"})));
@@ -591,6 +621,7 @@ async function withRetry(fn, retries=2, delayMs=4000){
 // both read/write the same notes instead of each having their own copy.
 const STORAGE_KEY = "tarot-compendium-notes";
 const CUSTOM_PAGES_KEY = "tarot-compendium-custom-pages";
+const CARD_FIELDS_KEY = "tarot-compendium-card-fields";
 let NOTES = []; // {id, cardIds:[], html, createdAt, updatedAt, order}
 
 // ---- Dropbox config ----
@@ -686,7 +717,7 @@ async function dbxDownload(){
     method:'POST',
     headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({path: DROPBOX_DATA_PATH}) }
   });
-  if(resp.status===409) return { notes: [], customPages: [] }; // no file saved yet
+  if(resp.status===409) return { notes: [], customPages: [], cardFields: {} }; // no file saved yet
   if(!resp.ok){
     const text = await resp.text().catch(()=>'');
     throw new Error('Dropbox download failed: '+resp.status+' — '+text);
@@ -738,7 +769,13 @@ function mergeData(a, b){
   const pageMap = new Map();
   (a.customPages||[]).forEach(p=>pageMap.set(p.id, p));
   (b.customPages||[]).forEach(p=>pageMap.set(p.id, p));
-  return { notes: Array.from(noteMap.values()), customPages: Array.from(pageMap.values()) };
+  const fieldsMap = new Map();
+  Object.entries(a.cardFields||{}).forEach(([id,f])=>fieldsMap.set(id,f));
+  Object.entries(b.cardFields||{}).forEach(([id,f])=>{
+    const existing = fieldsMap.get(id);
+    if(!existing || (f.updatedAt||0) > (existing.updatedAt||0)) fieldsMap.set(id,f);
+  });
+  return { notes: Array.from(noteMap.values()), customPages: Array.from(pageMap.values()), cardFields: Object.fromEntries(fieldsMap) };
 }
 
 // Local cache now uses IndexedDB rather than localStorage — localStorage
@@ -777,11 +814,13 @@ async function idbGet(key){
 async function loadLocalCache(){
   try{ NOTES = (await idbGet(STORAGE_KEY)) || []; }catch(e){ console.error('Local load failed', e); NOTES = []; }
   try{ CUSTOM_PAGES = (await idbGet(CUSTOM_PAGES_KEY)) || []; }catch(e){ console.error('Local load failed', e); CUSTOM_PAGES = []; }
+  try{ CARD_FIELDS = (await idbGet(CARD_FIELDS_KEY)) || {}; }catch(e){ console.error('Local load failed', e); CARD_FIELDS = {}; }
 }
 async function saveLocalCache(){
   try{
     await idbSet(STORAGE_KEY, NOTES);
     await idbSet(CUSTOM_PAGES_KEY, CUSTOM_PAGES);
+    await idbSet(CARD_FIELDS_KEY, CARD_FIELDS);
     return true;
   }catch(e){
     console.error("Local save failed", e);
@@ -796,9 +835,10 @@ async function syncWithDropbox(){
   setSyncStatus('busy', 'Syncing…');
   try{
     const remote = await withRetry(()=>dbxDownload());
-    const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES}, remote || {notes:[],customPages:[]});
+    const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS}, remote || {notes:[],customPages:[],cardFields:{}});
     NOTES = merged.notes;
     CUSTOM_PAGES = merged.customPages;
+    CARD_FIELDS = merged.cardFields;
     await saveLocalCache();
     await withRetry(()=>dbxUpload(merged));
     setSyncStatus('ok', 'Synced');
@@ -817,7 +857,7 @@ async function persistNotes(){
   const localOk = await saveLocalCache();
   if(isDropboxConnected()){
     setSyncStatus('busy','Saving…');
-    withRetry(()=>dbxUpload({notes:NOTES, customPages:CUSTOM_PAGES}))
+    withRetry(()=>dbxUpload({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS}))
       .then(()=> setSyncStatus('ok','Synced'))
       .catch(e=>{
         console.error(e);
@@ -865,9 +905,8 @@ function renderSourceLine(note){
 }
 function groupRank(note){
   if(noteHasImage(note)) return 0;
-  if(note.isKeywords) return 1;
-  if(note.pinnedFirst) return 2;
-  return 3;
+  if(note.pinnedFirst) return 1;
+  return 2;
 }
 function pipNumberFor(note){
   const nums = note.cardIds.map(id => PIP_RANK_TAGS.find(t=>t.id===id)).filter(Boolean).map(t=>t.pipNumber);
@@ -1098,19 +1137,10 @@ function renderSources(){
   });
 }
 function computeAstrologyIndex(){
-  const map = new Map(); // cardId -> {cardId, cardName, astro, deckOrder, updatedAt}
-  NOTES.forEach(note=>{
-    if(!note.astro) return;
-    note.cardIds.forEach(id=>{
-      const deckOrder = CARDS.findIndex(c=>c.id===id);
-      if(deckOrder === -1) return; // only real deck cards — this is a per-card index
-      const existing = map.get(id);
-      if(!existing || (note.updatedAt||0) > (existing.updatedAt||0)){
-        map.set(id, {cardId:id, cardName: CARDS[deckOrder].name, astro: note.astro.trim(), deckOrder, updatedAt: note.updatedAt||0});
-      }
-    });
-  });
-  return Array.from(map.values()).sort((a,b)=>a.deckOrder-b.deckOrder);
+  return CARDS
+    .map((card, deckOrder) => ({ card, deckOrder, fields: CARD_FIELDS[card.id] }))
+    .filter(e => e.fields && e.fields.astro)
+    .map(e => ({ cardId: e.card.id, cardName: e.card.name, astro: e.fields.astro, deckOrder: e.deckOrder }));
 }
 function renderAstrology(){
   updateNoteCount();
@@ -1118,7 +1148,7 @@ function renderAstrology(){
   const entries = computeAstrologyIndex();
   list.innerHTML = '';
   if(entries.length===0){
-    list.innerHTML = `<div class="empty-state">No astrological associations logged yet. Add one to any note (via the Astrology field) and it'll show up here automatically, in deck order.</div>`;
+    list.innerHTML = `<div class="empty-state">No astrological associations logged yet. Set one from any card's page and it'll show up here automatically, in deck order.</div>`;
     return;
   }
   entries.forEach(entry=>{
@@ -1131,6 +1161,13 @@ function renderAstrology(){
     list.appendChild(el);
     el.querySelector('.eyebrow-link').addEventListener('click', ()=> showCard(entry.cardId));
   });
+}
+function saveCardField(cardId, field, value){
+  const existing = CARD_FIELDS[cardId] || {};
+  existing[field] = value.trim();
+  existing.updatedAt = Date.now();
+  CARD_FIELDS[cardId] = existing;
+  persistNotes();
 }
 function renderCard(cardId){
   updateNoteCount();
@@ -1156,6 +1193,23 @@ function renderCard(cardId){
     cardNav.style.display = 'none'; // group-tag and custom pages don't have a natural next/prev
   }
 
+  const cardFieldsPanel = document.getElementById('cardFields');
+  if(deckIndex !== -1){
+    cardFieldsPanel.style.display = 'flex';
+    const fields = CARD_FIELDS[cardId] || {};
+    const kwInput = document.getElementById('cardKeywordsInput');
+    const astroInput = document.getElementById('cardAstroInput');
+    const guidanceInput = document.getElementById('cardGuidanceInput');
+    kwInput.value = fields.keywords || '';
+    astroInput.value = fields.astro || '';
+    guidanceInput.value = fields.guidance || '';
+    kwInput.onblur = ()=> saveCardField(cardId, 'keywords', kwInput.value);
+    astroInput.onblur = ()=> saveCardField(cardId, 'astro', astroInput.value);
+    guidanceInput.onblur = ()=> saveCardField(cardId, 'guidance', guidanceInput.value);
+  } else {
+    cardFieldsPanel.style.display = 'none'; // group-tag and custom pages don't have their own astrology/keywords/guidance
+  }
+
   const entries = document.getElementById('entries');
   entries.innerHTML = '';
   const list = notesForCard(cardId);
@@ -1165,14 +1219,13 @@ function renderCard(cardId){
   }
   list.forEach(note=>{
     const el = document.createElement('div');
-    el.className = 'entry' + (noteHasImage(note) ? ' has-images' : '') + (note.isKeywords ? ' is-keywords' : '');
+    el.className = 'entry' + (noteHasImage(note) ? ' has-images' : '');
     const otherTags = note.cardIds.filter(id=>id!==cardId).map(id=>allPages().find(c=>c.id===id)?.name).filter(Boolean);
     el.innerHTML = `<div class="entry-meta">
         <span><span class="drag-handle" title="Drag to reorder">⠿⠿</span>${otherTags.length? ' Also on: '+otherTags.join(', '):''}</span>
         <span class="entry-actions"><span data-act="edit">✎ edit</span><span data-act="del">✕ delete</span></span>
       </div>
       <div class="entry-body">${note.html}</div>
-      ${note.astro ? `<div class="entry-astro">☉ ${escapeHtml(note.astro)}</div>` : ''}
       ${(note.source || note.sourceLink) ? `<div class="entry-source">(${renderSourceLine(note)})</div>` : ''}`;
     el.querySelector('[data-act="edit"]').onclick = ()=> openModal(note.id);
     el.querySelector('[data-act="del"]').onclick = async ()=>{
@@ -1255,18 +1308,14 @@ function openModal(noteId){
     selectedTags = [...note.cardIds];
     document.getElementById('sourceInput').value = note.source || '';
     document.getElementById('sourceLinkInput').value = note.sourceLink || '';
-    document.getElementById('astroInput').value = note.astro || '';
     document.getElementById('orderInput').value = (note.order !== undefined && note.order !== null) ? note.order : '';
-    document.getElementById('keywordsInput').checked = !!note.isKeywords;
     document.getElementById('pinFirstInput').checked = !!note.pinnedFirst;
   } else {
     editor.innerHTML = '';
     selectedTags = currentCardId ? [currentCardId] : [];
     document.getElementById('sourceInput').value = '';
     document.getElementById('sourceLinkInput').value = '';
-    document.getElementById('astroInput').value = '';
     document.getElementById('orderInput').value = '';
-    document.getElementById('keywordsInput').checked = false;
     document.getElementById('pinFirstInput').checked = false;
   }
   renderChips();
@@ -1431,9 +1480,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   if(selectedTags.length===0){ alert('Tag this note to at least one card so it knows which page to appear on.'); return; }
   const source = document.getElementById('sourceInput').value.trim();
   const sourceLink = document.getElementById('sourceLinkInput').value.trim();
-  const astro = document.getElementById('astroInput').value.trim();
   const orderVal = document.getElementById('orderInput').value.trim();
-  const isKeywords = document.getElementById('keywordsInput').checked;
   const pinnedFirst = document.getElementById('pinFirstInput').checked;
   if(editingNoteId){
     const note = NOTES.find(n=>n.id===editingNoteId);
@@ -1442,8 +1489,6 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
     note.updatedAt = Date.now();
     note.source = source;
     note.sourceLink = sourceLink;
-    note.astro = astro;
-    note.isKeywords = isKeywords;
     note.pinnedFirst = pinnedFirst;
     if(orderVal !== '') note.order = Number(orderVal);
   } else {
@@ -1452,7 +1497,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
       cardIds:[...selectedTags], html,
       createdAt: Date.now(), updatedAt: Date.now(),
       order: orderVal !== '' ? Number(orderVal) : Date.now(),
-      isKeywords, pinnedFirst, source, sourceLink, astro
+      pinnedFirst, source, sourceLink
     });
   }
   await persistNotes();
@@ -1471,7 +1516,7 @@ document.getElementById('deleteNoteBtn').onclick = async ()=>{
 
 // backup export/import
 document.getElementById('exportBtn').onclick = ()=>{
-  const payload = { notes: NOTES, customPages: CUSTOM_PAGES };
+  const payload = { notes: NOTES, customPages: CUSTOM_PAGES, cardFields: CARD_FIELDS };
   const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1487,10 +1532,11 @@ document.getElementById('importFile').addEventListener('change', (e)=>{
   reader.onload = async (ev)=>{
     try{
       const parsed = JSON.parse(ev.target.result);
-      // Support both the current format ({notes, customPages}) and older
-      // backups that were just a plain array of notes.
+      // Support both the current format ({notes, customPages, cardFields}) and
+      // older backups (plain array of notes, or missing cardFields).
       const importedNotes = Array.isArray(parsed) ? parsed : (parsed.notes || []);
       const importedPages = Array.isArray(parsed) ? [] : (parsed.customPages || []);
+      const importedFields = Array.isArray(parsed) ? {} : (parsed.cardFields || {});
       if(!Array.isArray(importedNotes)) throw new Error('bad format');
       const noteCount = importedNotes.length;
       const pageCount = importedPages.length;
@@ -1499,6 +1545,10 @@ document.getElementById('importFile').addEventListener('change', (e)=>{
         importedNotes.forEach(n=>{ if(!existingNoteIds.has(n.id)) NOTES.push(n); });
         const existingPageIds = new Set(CUSTOM_PAGES.map(p=>p.id));
         importedPages.forEach(p=>{ if(!existingPageIds.has(p.id)) CUSTOM_PAGES.push(p); });
+        Object.entries(importedFields).forEach(([id,f])=>{
+          const existing = CARD_FIELDS[id];
+          if(!existing || (f.updatedAt||0) > (existing.updatedAt||0)) CARD_FIELDS[id] = f;
+        });
         await persistNotes();
         if(currentCardId) renderCard(currentCardId); else renderHome();
         alert('Import complete.');
