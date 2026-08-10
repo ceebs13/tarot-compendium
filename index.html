@@ -18,6 +18,8 @@
   --brass-bright:#d4ac5e;
   --oxblood:#6e2a34;
   --sage:#6f7d5e;
+  --indigo:#4b5a7a;
+  --herb:#4f7942;
   --line: rgba(33,26,20,0.18);
   --shadow: 0 8px 24px rgba(20,14,8,0.25);
 }
@@ -199,25 +201,6 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   font-size:38px; color: var(--parchment);
 }
 .entries{ display:flex; flex-direction:column; gap:18px; }
-.card-fields{
-  background: var(--parchment);
-  border-radius:8px;
-  padding:16px 22px;
-  margin-bottom:22px;
-  box-shadow: var(--shadow);
-  border-left: 4px solid var(--sage);
-  display:flex; flex-direction:column; gap:12px;
-}
-.card-field label{
-  display:block; font-family:'JetBrains Mono',monospace; font-size:11px;
-  text-transform:uppercase; letter-spacing:0.08em; color:#5c4f3d; margin-bottom:4px;
-}
-.card-field input, .card-field textarea{
-  width:100%; padding:7px 10px; border:1px solid rgba(33,26,20,0.2);
-  border-radius:5px; font-family:'Source Serif 4',serif; font-size:14px;
-  background:#fff; resize:vertical;
-}
-.card-field input:focus, .card-field textarea:focus{ outline:none; border-color: var(--brass); }
 .entry{
   background: var(--parchment);
   border-radius:8px;
@@ -228,6 +211,18 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 }
 .entry.dragging{ opacity:0.4; }
 .entry.has-images{ border-left-color: var(--sage); }
+.entry.astro-display{
+  border-left-color: var(--brass);
+  font-family:'JetBrains Mono',monospace;
+  font-size:14px;
+}
+.entry.astro-display .entry-body{ font-size:14px; }
+.entry.is-keywords{ border-left-color: var(--oxblood); }
+.entry.is-keywords .entry-body{ font-weight:700; font-size:20px; line-height:1.4; }
+.entry.is-guidance{ border-left-color: var(--indigo); }
+.entry.is-guidance .entry-body{ font-weight:700; font-size:18px; font-style:italic; line-height:1.5; }
+.entry.is-herb{ border-left-color: var(--herb); }
+.entry.is-herb .entry-body{ font-weight:700; font-size:18px; line-height:1.5; }
 .entry-source{
   margin-top:10px;
   font-size:13px;
@@ -415,20 +410,6 @@ input[type=file]{ display:none; }
         <button class="btn primary" id="addNoteForThisCard">+ Add note to this page</button>
       </div>
     </div>
-    <div class="card-fields" id="cardFields" style="display:none;">
-      <div class="card-field">
-        <label for="cardKeywordsInput">Keywords</label>
-        <input type="text" id="cardKeywordsInput" placeholder="e.g. new beginnings, spontaneity, risk"/>
-      </div>
-      <div class="card-field">
-        <label for="cardAstroInput">Astrology</label>
-        <input type="text" id="cardAstroInput" placeholder="e.g. Uranus, or Moon in Libra"/>
-      </div>
-      <div class="card-field">
-        <label for="cardGuidanceInput">Guidance</label>
-        <textarea id="cardGuidanceInput" rows="2" placeholder="A short keynote meaning or interpretation…"></textarea>
-      </div>
-    </div>
     <div class="entries" id="entries"></div>
   </div>
 
@@ -447,7 +428,7 @@ input[type=file]{ display:none; }
     <span class="back-link" id="astrologyBackLink">← all cards</span>
     <div class="page-header">
       <div class="page-title-block">
-        <div class="eyebrow">Auto-generated · updates as you add associations</div>
+        <div class="eyebrow">All 78 cards · type directly into any field, saves automatically</div>
         <div class="page-title">Astrology</div>
       </div>
     </div>
@@ -485,7 +466,19 @@ input[type=file]{ display:none; }
 
       <label class="field-label">Order</label>
       <input type="number" class="tag-input" id="orderInput" placeholder="lower numbers show first — leave blank to just add to the end"/>
-      <label style="display:flex; align-items:center; gap:8px; margin:10px 0 4px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+      <label class="field-label" style="margin-top:10px;">Note type</label>
+      <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:4px;">
+        <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+          <input type="checkbox" id="keywordsInput" style="width:auto;"/> Keywords
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+          <input type="checkbox" id="guidanceInput" style="width:auto;"/> Guidance
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+          <input type="checkbox" id="herbInput" style="width:auto;"/> Herb
+        </label>
+      </div>
+      <label style="display:flex; align-items:center; gap:8px; margin:6px 0 4px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
         <input type="checkbox" id="pinFirstInput" style="width:auto;"/> Always show first (after any images)
       </label>
 
@@ -905,8 +898,9 @@ function renderSourceLine(note){
 }
 function groupRank(note){
   if(noteHasImage(note)) return 0;
-  if(note.pinnedFirst) return 1;
-  return 2;
+  if(note.isKeywords) return 1;
+  if(note.pinnedFirst) return 2;
+  return 3;
 }
 function pipNumberFor(note){
   const nums = note.cardIds.map(id => PIP_RANK_TAGS.find(t=>t.id===id)).filter(Boolean).map(t=>t.pipNumber);
@@ -1136,30 +1130,23 @@ function renderSources(){
     el.querySelectorAll('.source-page-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
   });
 }
-function computeAstrologyIndex(){
-  return CARDS
-    .map((card, deckOrder) => ({ card, deckOrder, fields: CARD_FIELDS[card.id] }))
-    .filter(e => e.fields && e.fields.astro)
-    .map(e => ({ cardId: e.card.id, cardName: e.card.name, astro: e.fields.astro, deckOrder: e.deckOrder }));
-}
 function renderAstrology(){
   updateNoteCount();
   const list = document.getElementById('astrologyList');
-  const entries = computeAstrologyIndex();
   list.innerHTML = '';
-  if(entries.length===0){
-    list.innerHTML = `<div class="empty-state">No astrological associations logged yet. Set one from any card's page and it'll show up here automatically, in deck order.</div>`;
-    return;
-  }
-  entries.forEach(entry=>{
+  CARDS.forEach(card=>{
     const el = document.createElement('div');
     el.className = 'entry';
-    el.innerHTML = `<div class="entry-body" style="font-size:17px;">
-        <span class="eyebrow-link" data-goto="${entry.cardId}" style="font-weight:600;">${escapeHtml(entry.cardName)}</span>
-      </div>
-      <div class="entry-astro" style="margin-top:6px; font-size:15px;">☉ ${escapeHtml(entry.astro)}</div>`;
+    const current = (CARD_FIELDS[card.id] && CARD_FIELDS[card.id].astro) || '';
+    el.innerHTML = `<div class="entry-body" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+        <span class="eyebrow-link astro-card-link" data-goto="${card.id}" style="font-weight:600; font-size:16px;">${escapeHtml(card.name)}</span>
+        <input type="text" class="tag-input astro-editor-input" data-card="${card.id}" value="${escapeHtml(current)}" placeholder="e.g. Aquarius, or Moon in Libra" style="max-width:280px; flex:1; min-width:200px;"/>
+      </div>`;
     list.appendChild(el);
-    el.querySelector('.eyebrow-link').addEventListener('click', ()=> showCard(entry.cardId));
+  });
+  list.querySelectorAll('.astro-card-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
+  list.querySelectorAll('.astro-editor-input').forEach(inp=>{
+    inp.addEventListener('blur', ()=> saveCardField(inp.dataset.card, 'astro', inp.value));
   });
 }
 function saveCardField(cardId, field, value){
@@ -1193,33 +1180,38 @@ function renderCard(cardId){
     cardNav.style.display = 'none'; // group-tag and custom pages don't have a natural next/prev
   }
 
-  const cardFieldsPanel = document.getElementById('cardFields');
-  if(deckIndex !== -1){
-    cardFieldsPanel.style.display = 'flex';
-    const fields = CARD_FIELDS[cardId] || {};
-    const kwInput = document.getElementById('cardKeywordsInput');
-    const astroInput = document.getElementById('cardAstroInput');
-    const guidanceInput = document.getElementById('cardGuidanceInput');
-    kwInput.value = fields.keywords || '';
-    astroInput.value = fields.astro || '';
-    guidanceInput.value = fields.guidance || '';
-    kwInput.onblur = ()=> saveCardField(cardId, 'keywords', kwInput.value);
-    astroInput.onblur = ()=> saveCardField(cardId, 'astro', astroInput.value);
-    guidanceInput.onblur = ()=> saveCardField(cardId, 'guidance', guidanceInput.value);
-  } else {
-    cardFieldsPanel.style.display = 'none'; // group-tag and custom pages don't have their own astrology/keywords/guidance
-  }
-
   const entries = document.getElementById('entries');
   entries.innerHTML = '';
   const list = notesForCard(cardId);
+  const astroValue = deckIndex !== -1 ? ((CARD_FIELDS[cardId] && CARD_FIELDS[cardId].astro) || '') : '';
+
+  function insertAstroLine(){
+    if(!astroValue) return;
+    const el = document.createElement('div');
+    el.className = 'entry astro-display';
+    el.innerHTML = `<div class="entry-body">Astrological Association: <strong>${escapeHtml(astroValue)}</strong></div>`;
+    entries.appendChild(el);
+  }
+
   if(list.length===0){
-    entries.innerHTML = `<div class="empty-state">No notes yet on this page. Add one, and it'll appear here — and stay here as you add more.</div>`;
+    insertAstroLine();
+    if(!astroValue){
+      entries.innerHTML = `<div class="empty-state">No notes yet on this page. Add one, and it'll appear here — and stay here as you add more.</div>`;
+    }
     return;
   }
+  let astroInserted = false;
   list.forEach(note=>{
+    if(!astroInserted && !noteHasImage(note)){
+      insertAstroLine();
+      astroInserted = true;
+    }
     const el = document.createElement('div');
-    el.className = 'entry' + (noteHasImage(note) ? ' has-images' : '');
+    el.className = 'entry'
+      + (noteHasImage(note) ? ' has-images' : '')
+      + (note.isKeywords ? ' is-keywords' : '')
+      + (note.isGuidance ? ' is-guidance' : '')
+      + (note.isHerb ? ' is-herb' : '');
     const otherTags = note.cardIds.filter(id=>id!==cardId).map(id=>allPages().find(c=>c.id===id)?.name).filter(Boolean);
     el.innerHTML = `<div class="entry-meta">
         <span><span class="drag-handle" title="Drag to reorder">⠿⠿</span>${otherTags.length? ' Also on: '+otherTags.join(', '):''}</span>
@@ -1241,6 +1233,7 @@ function renderCard(cardId){
       img.addEventListener('click', ()=> openLightbox(img.src));
     });
   });
+  if(!astroInserted) insertAstroLine();
 }
 
 // ---------- image lightbox ----------
@@ -1309,6 +1302,9 @@ function openModal(noteId){
     document.getElementById('sourceInput').value = note.source || '';
     document.getElementById('sourceLinkInput').value = note.sourceLink || '';
     document.getElementById('orderInput').value = (note.order !== undefined && note.order !== null) ? note.order : '';
+    document.getElementById('keywordsInput').checked = !!note.isKeywords;
+    document.getElementById('guidanceInput').checked = !!note.isGuidance;
+    document.getElementById('herbInput').checked = !!note.isHerb;
     document.getElementById('pinFirstInput').checked = !!note.pinnedFirst;
   } else {
     editor.innerHTML = '';
@@ -1316,6 +1312,9 @@ function openModal(noteId){
     document.getElementById('sourceInput').value = '';
     document.getElementById('sourceLinkInput').value = '';
     document.getElementById('orderInput').value = '';
+    document.getElementById('keywordsInput').checked = false;
+    document.getElementById('guidanceInput').checked = false;
+    document.getElementById('herbInput').checked = false;
     document.getElementById('pinFirstInput').checked = false;
   }
   renderChips();
@@ -1481,6 +1480,9 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   const source = document.getElementById('sourceInput').value.trim();
   const sourceLink = document.getElementById('sourceLinkInput').value.trim();
   const orderVal = document.getElementById('orderInput').value.trim();
+  const isKeywords = document.getElementById('keywordsInput').checked;
+  const isGuidance = document.getElementById('guidanceInput').checked;
+  const isHerb = document.getElementById('herbInput').checked;
   const pinnedFirst = document.getElementById('pinFirstInput').checked;
   if(editingNoteId){
     const note = NOTES.find(n=>n.id===editingNoteId);
@@ -1489,6 +1491,9 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
     note.updatedAt = Date.now();
     note.source = source;
     note.sourceLink = sourceLink;
+    note.isKeywords = isKeywords;
+    note.isGuidance = isGuidance;
+    note.isHerb = isHerb;
     note.pinnedFirst = pinnedFirst;
     if(orderVal !== '') note.order = Number(orderVal);
   } else {
@@ -1497,7 +1502,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
       cardIds:[...selectedTags], html,
       createdAt: Date.now(), updatedAt: Date.now(),
       order: orderVal !== '' ? Number(orderVal) : Date.now(),
-      pinnedFirst, source, sourceLink
+      isKeywords, isGuidance, isHerb, pinnedFirst, source, sourceLink
     });
   }
   await persistNotes();
