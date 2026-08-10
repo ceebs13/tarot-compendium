@@ -6,7 +6,7 @@
 <title>My Tarot Compendium</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHBhdGggZD0iTTYgMzIgUTMyIDEyIDU4IDMyIFEzMiA1MiA2IDMyIFoiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2Q0YWM1ZSIgc3Ryb2tlLXdpZHRoPSIzIi8+PHBhdGggZD0iTTM4IDIyYTExIDExIDAgMSAwIDAgMjAgMTMuNSAxMy41IDAgMCAxIDAtMjB6IiBmaWxsPSIjZDRhYzVlIi8+PC9zdmc+Cg==">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Raleway:wght@400;600;700&display=swap');
 
 :root{
   --ink:#211a14;
@@ -233,7 +233,6 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   border-left-color: var(--herb);
   background-color: color-mix(in srgb, var(--parchment) 85%, var(--herb) 15%);
 }
-.entry.is-herb .entry-body{ font-weight:700; font-size:18px; line-height:1.5; }
 .entry.is-numerology{
   border-left-color: var(--teal);
   background-color: color-mix(in srgb, var(--parchment) 85%, var(--teal) 15%);
@@ -264,7 +263,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry-actions{ display:flex; gap:8px; }
 .entry-actions span{ cursor:pointer; opacity:0.6; }
 .entry-actions span:hover{ opacity:1; }
-.entry-body{ font-size:16px; line-height:1.65; }
+.entry-body{ font-family:'Raleway', sans-serif; font-size:10px; line-height:1.65; }
 .entry-body img{ width:200px; height:345px; max-width:100%; object-fit:fill; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; cursor:zoom-in; }
 .entry-body p{ margin:0 0 10px; }
 .entry-body ul, .entry-body ol{ margin:0 0 10px; padding-left:22px; }
@@ -493,9 +492,6 @@ input[type=file]{ display:none; }
           <input type="checkbox" id="herbInput" style="width:auto;"/> Herb
         </label>
       </div>
-      <label style="display:flex; align-items:center; gap:8px; margin:6px 0 4px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
-        <input type="checkbox" id="pinFirstInput" style="width:auto;"/> Always show first (after any images)
-      </label>
 
       <label class="field-label" style="margin-top:10px;">Note</label>
       <div class="toolbar">
@@ -916,6 +912,9 @@ function noteHasImage(note){
 function noteIsNumerology(note){
   return note.cardIds.some(id => id==='pip-overview' || PIP_RANK_TAGS.some(t=>t.id===id));
 }
+function noteIsSuitWide(note){
+  return note.cardIds.some(id => GROUP_TAGS.some(t=>t.id===id));
+}
 function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -931,10 +930,16 @@ function renderSourceLine(note){
   }
   return '';
 }
+// Order: images, then astrology (inserted separately at render time), then
+// suit-wide notes, then numerology, then all regular notes, then guidance,
+// then herb — guidance/herb sink to the bottom even if also suit-wide or
+// numerology tagged, since being marked Guidance/Herb takes priority.
 function groupRank(note){
   if(noteHasImage(note)) return 0;
-  if(note.isKeywords) return 1;
-  if(note.pinnedFirst) return 2;
+  if(note.isGuidance) return 4;
+  if(note.isHerb) return 5;
+  if(noteIsSuitWide(note)) return 1;
+  if(noteIsNumerology(note)) return 2;
   return 3;
 }
 function pipNumberFor(note){
@@ -1251,6 +1256,7 @@ function renderCard(cardId){
       + (isNumerology ? ' is-numerology' : '');
     const labels = [];
     if(note.isGuidance) labels.push('Guidance');
+    if(note.isHerb) labels.push('Herb');
     if(isNumerology) labels.push('Numerology');
     const labelsHtml = labels.map(l=>`<div class="field-label-inline" style="margin-bottom:4px;">${l.toUpperCase()}:</div>`).join('');
     const otherTags = note.cardIds.filter(id=>id!==cardId).map(id=>allPages().find(c=>c.id===id)?.name).filter(Boolean);
@@ -1346,7 +1352,6 @@ function openModal(noteId){
     document.getElementById('keywordsInput').checked = !!note.isKeywords;
     document.getElementById('guidanceInput').checked = !!note.isGuidance;
     document.getElementById('herbInput').checked = !!note.isHerb;
-    document.getElementById('pinFirstInput').checked = !!note.pinnedFirst;
   } else {
     editor.innerHTML = '';
     selectedTags = currentCardId ? [currentCardId] : [];
@@ -1356,7 +1361,6 @@ function openModal(noteId){
     document.getElementById('keywordsInput').checked = false;
     document.getElementById('guidanceInput').checked = false;
     document.getElementById('herbInput').checked = false;
-    document.getElementById('pinFirstInput').checked = false;
   }
   renderChips();
   tagInput.value = '';
@@ -1524,7 +1528,6 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   const isKeywords = document.getElementById('keywordsInput').checked;
   const isGuidance = document.getElementById('guidanceInput').checked;
   const isHerb = document.getElementById('herbInput').checked;
-  const pinnedFirst = document.getElementById('pinFirstInput').checked;
   if(editingNoteId){
     const note = NOTES.find(n=>n.id===editingNoteId);
     note.html = html;
@@ -1535,7 +1538,6 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
     note.isKeywords = isKeywords;
     note.isGuidance = isGuidance;
     note.isHerb = isHerb;
-    note.pinnedFirst = pinnedFirst;
     if(orderVal !== '') note.order = Number(orderVal);
   } else {
     NOTES.push({
@@ -1543,7 +1545,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
       cardIds:[...selectedTags], html,
       createdAt: Date.now(), updatedAt: Date.now(),
       order: orderVal !== '' ? Number(orderVal) : Date.now(),
-      isKeywords, isGuidance, isHerb, pinnedFirst, source, sourceLink
+      isKeywords, isGuidance, isHerb, source, sourceLink
     });
   }
   await persistNotes();
