@@ -20,6 +20,8 @@
   --sage:#6f7d5e;
   --indigo:#4b5a7a;
   --herb:#4f7942;
+  --violet:#6b5b95;
+  --teal:#3d7068;
   --line: rgba(33,26,20,0.18);
   --shadow: 0 8px 24px rgba(20,14,8,0.25);
 }
@@ -210,19 +212,33 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   transition: opacity .15s ease, border-top-color .1s ease;
 }
 .entry.dragging{ opacity:0.4; }
-.entry.has-images{ border-left-color: var(--sage); }
-.entry.astro-display{
-  border-left-color: var(--brass);
-  font-family:'JetBrains Mono',monospace;
-  font-size:14px;
+.entry.has-images{
+  border-left-color: var(--sage);
+  background-color: color-mix(in srgb, var(--parchment) 85%, var(--sage) 15%);
 }
-.entry.astro-display .entry-body{ font-size:14px; }
-.entry.is-keywords{ border-left-color: var(--oxblood); }
+.entry.astro-display{
+  border-left-color: var(--violet);
+  background-color: color-mix(in srgb, var(--parchment) 85%, var(--violet) 15%);
+}
+.entry.is-keywords{
+  border-left-color: var(--oxblood);
+  background-color: color-mix(in srgb, var(--parchment) 85%, var(--oxblood) 15%);
+}
 .entry.is-keywords .entry-body{ font-weight:700; font-size:20px; line-height:1.4; }
-.entry.is-guidance{ border-left-color: var(--indigo); }
-.entry.is-guidance .entry-body{ font-weight:700; font-size:18px; font-style:italic; line-height:1.5; }
-.entry.is-herb{ border-left-color: var(--herb); }
+.entry.is-guidance{
+  border-left-color: var(--indigo);
+  background-color: color-mix(in srgb, var(--parchment) 85%, var(--indigo) 15%);
+}
+.entry.is-herb{
+  border-left-color: var(--herb);
+  background-color: color-mix(in srgb, var(--parchment) 85%, var(--herb) 15%);
+}
 .entry.is-herb .entry-body{ font-weight:700; font-size:18px; line-height:1.5; }
+.entry.is-numerology{
+  border-left-color: var(--teal);
+  background-color: color-mix(in srgb, var(--parchment) 85%, var(--teal) 15%);
+}
+.field-label-inline{ font-weight:700; text-transform:uppercase; }
 .entry-source{
   margin-top:10px;
   font-size:13px;
@@ -348,9 +364,8 @@ input[type=file]{ display:none; }
 .app-footer{
   display:flex; justify-content:center; align-items:center; gap:14px;
   padding:24px 22px 90px;
-  opacity:0.6;
+  opacity:0.9;
 }
-.app-footer:hover{ opacity:1; }
 .fab{
   position:fixed; bottom:28px; right:28px; z-index:30;
   background: var(--brass); color: var(--leather);
@@ -546,14 +561,22 @@ const GROUP_TAGS = GROUP_ORDER.map(g => ({
   group: 'Suit & Arcana Tags'
 }));
 
-// Court cards: one tag cascading to every Page/Knight/Queen/King across all
-// four suits (16 cards).
+// Court cards: an overview tag (for general court-card notes), plus four
+// rank tags (Page/Knight/Queen/King) that each cascade only to that rank
+// across the four suits — e.g. tagging "Queen" puts a note on the Queen of
+// Wands, Cups, Swords, and Pentacles, not on every court card.
 const COURT_TAG = {
   id: 'court-cards',
   name: 'Court Cards (all suits)',
-  eyebrow: 'Cascades to every Page, Knight, Queen & King',
+  eyebrow: 'Every court-card note, all ranks together',
   group: 'Suit & Arcana Tags'
 };
+const COURT_RANK_TAGS = COURT_RANKS.map(r => ({
+  id: 'court-' + r.toLowerCase(),
+  name: r + ' (all suits)',
+  eyebrow: 'Cascades to every ' + r + ' across the four suits',
+  group: 'Court Ranks'
+}));
 
 // Minor Arcana Pips: a taggable overview page (for general pip notes), plus
 // ten underlying number tags (Ace–Ten) that each cascade to the matching
@@ -583,7 +606,7 @@ let CUSTOM_PAGES = []; // {id, name}
 let CARD_FIELDS = {}; // { [cardId]: {astro, keywords, guidance, updatedAt} }
 
 function allPages(){
-  return CARDS.concat(GROUP_TAGS).concat([COURT_TAG, PIP_OVERVIEW_TAG]).concat(PIP_RANK_TAGS)
+  return CARDS.concat(GROUP_TAGS).concat([COURT_TAG, PIP_OVERVIEW_TAG]).concat(COURT_RANK_TAGS).concat(PIP_RANK_TAGS)
     .concat(CUSTOM_PAGES.map(p=>({id:p.id, name:p.name, eyebrow:"General & Themes", group:"General & Themes"})));
 }
 
@@ -873,11 +896,14 @@ function relevantTagIdsFor(cardId){
   if(cardId === 'pip-overview'){
     ids.push(...PIP_RANK_TAGS.map(t=>t.id));
   }
+  if(cardId === 'court-cards'){
+    ids.push(...COURT_RANK_TAGS.map(t=>t.id));
+  }
   if(card && GROUP_ORDER.includes(card.group)){
     ids.push(groupSlug(card.group));
   }
-  if(card && card.rankType === 'court'){
-    ids.push('court-cards');
+  if(card && card.rankType === 'court' && card.rank){
+    ids.push('court-' + card.rank.toLowerCase());
   }
   if(card && card.rankType === 'pip' && card.rank){
     ids.push('pip-' + card.rank.toLowerCase());
@@ -887,14 +913,23 @@ function relevantTagIdsFor(cardId){
 function noteHasImage(note){
   return /<img\b/i.test(note.html);
 }
+function noteIsNumerology(note){
+  return note.cardIds.some(id => id==='pip-overview' || PIP_RANK_TAGS.some(t=>t.id===id));
+}
 function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function renderSourceLine(note){
-  const parts = [];
-  if(note.source) parts.push(escapeHtml(note.source));
-  if(note.sourceLink) parts.push(`<a href="${escapeHtml(note.sourceLink)}" target="_blank" rel="noopener">${escapeHtml(note.sourceLink)}</a>`);
-  return parts.join(' · ');
+  if(note.source && note.sourceLink){
+    return `<a href="${escapeHtml(note.sourceLink)}" target="_blank" rel="noopener">${escapeHtml(note.source)}</a>`;
+  }
+  if(note.sourceLink){
+    return `<a href="${escapeHtml(note.sourceLink)}" target="_blank" rel="noopener">${escapeHtml(note.sourceLink)}</a>`;
+  }
+  if(note.source){
+    return escapeHtml(note.source);
+  }
+  return '';
 }
 function groupRank(note){
   if(noteHasImage(note)) return 0;
@@ -1140,7 +1175,7 @@ function renderAstrology(){
     const current = (CARD_FIELDS[card.id] && CARD_FIELDS[card.id].astro) || '';
     el.innerHTML = `<div class="entry-body" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
         <span class="eyebrow-link astro-card-link" data-goto="${card.id}" style="font-weight:600; font-size:16px;">${escapeHtml(card.name)}</span>
-        <input type="text" class="tag-input astro-editor-input" data-card="${card.id}" value="${escapeHtml(current)}" placeholder="e.g. Aquarius, or Moon in Libra" style="max-width:280px; flex:1; min-width:200px;"/>
+        <input type="text" class="tag-input astro-editor-input" data-card="${card.id}" value="${escapeHtml(current)}" style="max-width:280px; flex:1; min-width:200px;"/>
       </div>`;
     list.appendChild(el);
   });
@@ -1189,7 +1224,7 @@ function renderCard(cardId){
     if(!astroValue) return;
     const el = document.createElement('div');
     el.className = 'entry astro-display';
-    el.innerHTML = `<div class="entry-body">Astrological Association: <strong>${escapeHtml(astroValue)}</strong></div>`;
+    el.innerHTML = `<div class="entry-body"><span class="field-label-inline">Astrological Association:</span> ${escapeHtml(astroValue)}</div>`;
     entries.appendChild(el);
   }
 
@@ -1207,17 +1242,23 @@ function renderCard(cardId){
       astroInserted = true;
     }
     const el = document.createElement('div');
+    const isNumerology = noteIsNumerology(note);
     el.className = 'entry'
       + (noteHasImage(note) ? ' has-images' : '')
       + (note.isKeywords ? ' is-keywords' : '')
       + (note.isGuidance ? ' is-guidance' : '')
-      + (note.isHerb ? ' is-herb' : '');
+      + (note.isHerb ? ' is-herb' : '')
+      + (isNumerology ? ' is-numerology' : '');
+    const labels = [];
+    if(note.isGuidance) labels.push('Guidance');
+    if(isNumerology) labels.push('Numerology');
+    const labelsHtml = labels.map(l=>`<div class="field-label-inline" style="margin-bottom:4px;">${l.toUpperCase()}:</div>`).join('');
     const otherTags = note.cardIds.filter(id=>id!==cardId).map(id=>allPages().find(c=>c.id===id)?.name).filter(Boolean);
     el.innerHTML = `<div class="entry-meta">
         <span><span class="drag-handle" title="Drag to reorder">⠿⠿</span>${otherTags.length? ' Also on: '+otherTags.join(', '):''}</span>
         <span class="entry-actions"><span data-act="edit">✎ edit</span><span data-act="del">✕ delete</span></span>
       </div>
-      <div class="entry-body">${note.html}</div>
+      <div class="entry-body">${labelsHtml}${note.html}</div>
       ${(note.source || note.sourceLink) ? `<div class="entry-source">(${renderSourceLine(note)})</div>` : ''}`;
     el.querySelector('[data-act="edit"]').onclick = ()=> openModal(note.id);
     el.querySelector('[data-act="del"]').onclick = async ()=>{
