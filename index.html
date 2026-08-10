@@ -224,7 +224,6 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   border-left-color: var(--oxblood);
   background-color: color-mix(in srgb, var(--parchment) 85%, var(--oxblood) 15%);
 }
-.entry.is-keywords .entry-body{ font-weight:700; font-size:20px; line-height:1.4; }
 .entry.is-guidance{
   border-left-color: var(--indigo);
   background-color: color-mix(in srgb, var(--parchment) 85%, var(--indigo) 15%);
@@ -263,7 +262,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry-actions{ display:flex; gap:8px; }
 .entry-actions span{ cursor:pointer; opacity:0.6; }
 .entry-actions span:hover{ opacity:1; }
-.entry-body{ font-family:'Raleway', sans-serif; font-size:10px; line-height:1.65; }
+.entry-body{ font-family:'Raleway', sans-serif; font-size:14px; line-height:1.65; }
 .entry-body img{ width:200px; height:345px; max-width:100%; object-fit:fill; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; cursor:zoom-in; }
 .entry-body p{ margin:0 0 10px; }
 .entry-body ul, .entry-body ol{ margin:0 0 10px; padding-left:22px; }
@@ -931,16 +930,17 @@ function renderSourceLine(note){
   return '';
 }
 // Order: images, then astrology (inserted separately at render time), then
-// suit-wide notes, then numerology, then all regular notes, then guidance,
-// then herb — guidance/herb sink to the bottom even if also suit-wide or
-// numerology tagged, since being marked Guidance/Herb takes priority.
+// keywords, then suit-wide notes, then numerology, then all regular notes,
+// then guidance, then herb — guidance/herb sink to the bottom even if also
+// keywords/suit-wide/numerology tagged, since that marking takes priority.
 function groupRank(note){
   if(noteHasImage(note)) return 0;
-  if(note.isGuidance) return 4;
-  if(note.isHerb) return 5;
-  if(noteIsSuitWide(note)) return 1;
-  if(noteIsNumerology(note)) return 2;
-  return 3;
+  if(note.isGuidance) return 5;
+  if(note.isHerb) return 6;
+  if(note.isKeywords) return 1;
+  if(noteIsSuitWide(note)) return 2;
+  if(noteIsNumerology(note)) return 3;
+  return 4;
 }
 function pipNumberFor(note){
   const nums = note.cardIds.map(id => PIP_RANK_TAGS.find(t=>t.id===id)).filter(Boolean).map(t=>t.pipNumber);
@@ -1255,6 +1255,7 @@ function renderCard(cardId){
       + (note.isHerb ? ' is-herb' : '')
       + (isNumerology ? ' is-numerology' : '');
     const labels = [];
+    if(note.isKeywords) labels.push('Keywords');
     if(note.isGuidance) labels.push('Guidance');
     if(note.isHerb) labels.push('Herb');
     if(isNumerology) labels.push('Numerology');
