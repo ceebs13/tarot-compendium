@@ -203,6 +203,27 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   font-size:38px; color: var(--parchment);
 }
 .entries{ display:flex; flex-direction:column; gap:18px; }
+.bulk-form{
+  background: var(--parchment);
+  border-radius:8px;
+  padding:18px 22px;
+  margin-bottom:22px;
+  box-shadow: var(--shadow);
+  border-left: 4px solid var(--oxblood);
+  display:flex; flex-direction:column; gap:14px;
+}
+.bulk-field label{
+  display:block; font-family:'JetBrains Mono',monospace; font-size:11px;
+  text-transform:uppercase; letter-spacing:0.08em; color:#5c4f3d; margin-bottom:6px;
+}
+.bulk-field input, .bulk-field textarea{
+  width:100%; padding:8px 12px; border:1px solid rgba(33,26,20,0.2);
+  border-radius:5px; font-family:'Source Serif 4',serif; font-size:14px;
+  background:#fff; resize:vertical;
+}
+.bulk-field input:focus, .bulk-field textarea:focus{ outline:none; border-color: var(--brass); }
+.bulk-preview-item{ display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.bulk-preview-item.unmatched{ color: var(--oxblood); }
 .entry{
   background: var(--parchment);
   border-radius:8px;
@@ -447,9 +468,35 @@ input[type=file]{ display:none; }
     </div>
     <div class="entries" id="astrologyList"></div>
   </div>
+
+  <div id="bulkImportView" style="display:none;">
+    <span class="back-link" id="bulkImportBackLink">← all cards</span>
+    <div class="page-header">
+      <div class="page-title-block">
+        <div class="eyebrow">Temporary tool · delete whenever you're done with it</div>
+        <div class="page-title">Bulk Import</div>
+      </div>
+    </div>
+    <div class="bulk-form">
+      <div class="bulk-field">
+        <label for="bulkSourceInput">Source (applied to every note created)</label>
+        <input type="text" id="bulkSourceInput" value="Mary Sousa's Workbook"/>
+      </div>
+      <div class="bulk-field">
+        <label for="bulkPasteArea">Paste your text — each card's name on its own line, followed by its note text</label>
+        <textarea id="bulkPasteArea" rows="14" style="font-family:'JetBrains Mono',monospace; font-size:13px;" placeholder="The Fool&#10;Whatever your notes say about The Fool, on one or several lines...&#10;&#10;The Magician&#10;Whatever your notes say about The Magician...&#10;&#10;(and so on, for as many cards as you're pasting in this batch)"></textarea>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn primary" id="bulkPreviewBtn">Preview</button>
+        <button class="btn primary" id="bulkImportBtn" style="display:none; background:var(--oxblood); border-color:var(--oxblood);">Create the notes</button>
+      </div>
+    </div>
+    <div class="entries" id="bulkPreviewList"></div>
+  </div>
 </main>
 
 <footer class="app-footer">
+  <span class="back-link" id="bulkImportLink" style="cursor:pointer; margin-bottom:0;">Bulk Import</span>
   <span class="back-link" id="sourcesLink" style="cursor:pointer; margin-bottom:0;">Sources</span>
   <span class="back-link" id="astrologyLink" style="cursor:pointer; margin-bottom:0;">Astrology</span>
   <button class="btn ghost small" id="exportBtn">Export backup</button>
@@ -975,6 +1022,7 @@ function showHome(push=true){
   cardView.style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('bulkImportView').style.display = 'none';
   homeView.style.display = 'block';
   renderHome();
   if(push) history.pushState({view:'home'}, '', location.pathname + location.search);
@@ -984,6 +1032,7 @@ function showCard(cardId, push=true){
   homeView.style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('bulkImportView').style.display = 'none';
   cardView.style.display = 'block';
   renderCard(cardId);
   if(push) history.pushState({view:'card', cardId}, '', '#'+encodeURIComponent(cardId));
@@ -993,6 +1042,7 @@ function showSources(push=true){
   homeView.style.display = 'none';
   cardView.style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('bulkImportView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'block';
   renderSources();
   if(push) history.pushState({view:'sources'}, '', '#sources');
@@ -1002,9 +1052,19 @@ function showAstrology(push=true){
   homeView.style.display = 'none';
   cardView.style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
+  document.getElementById('bulkImportView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'block';
   renderAstrology();
   if(push) history.pushState({view:'astrology'}, '', '#astrology');
+}
+function showBulkImport(push=true){
+  currentCardId = null;
+  homeView.style.display = 'none';
+  cardView.style.display = 'none';
+  document.getElementById('sourcesView').style.display = 'none';
+  document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('bulkImportView').style.display = 'block';
+  if(push) history.pushState({view:'bulkImport'}, '', '#bulk-import');
 }
 // Makes the browser's own back/forward buttons move between pages inside
 // the app, instead of leaving it entirely.
@@ -1016,15 +1076,19 @@ window.addEventListener('popstate', (e)=>{
     showSources(false);
   } else if(state && state.view==='astrology'){
     showAstrology(false);
+  } else if(state && state.view==='bulkImport'){
+    showBulkImport(false);
   } else {
     showHome(false);
   }
 });
 document.getElementById('sourcesLink').onclick = ()=> showSources();
 document.getElementById('astrologyLink').onclick = ()=> showAstrology();
+document.getElementById('bulkImportLink').onclick = ()=> showBulkImport();
 document.getElementById('brandLink').onclick = ()=> showHome();
 document.getElementById('sourcesBackLink').onclick = ()=> showHome();
 document.getElementById('astrologyBackLink').onclick = ()=> showHome();
+document.getElementById('bulkImportBackLink').onclick = ()=> showHome();
 document.getElementById('deletePageBtn').onclick = ()=>{
   if(!currentCardId) return;
   const page = CUSTOM_PAGES.find(p=>p.id===currentCardId);
@@ -1189,6 +1253,83 @@ function renderAstrology(){
     inp.addEventListener('blur', ()=> saveCardField(inp.dataset.card, 'astro', inp.value));
   });
 }
+// ---------- temporary bulk-import tool ----------
+let bulkParsedSections = [];
+function parseBulkImport(text){
+  const cardsByName = new Map(CARDS.map(c=>[c.name.toLowerCase(), c]));
+  const lines = text.split(/\r?\n/);
+  const sections = [];
+  let current = null;
+  lines.forEach(line=>{
+    const trimmed = line.trim();
+    const matchedCard = cardsByName.get(trimmed.toLowerCase());
+    if(matchedCard){
+      current = { card: matchedCard, lines: [] };
+      sections.push(current);
+    } else if(current){
+      current.lines.push(line);
+    }
+  });
+  return sections
+    .map(s => ({ card: s.card, text: s.lines.join('\n').trim() }))
+    .filter(s => s.text.length > 0);
+}
+function renderBulkPreview(){
+  const text = document.getElementById('bulkPasteArea').value;
+  bulkParsedSections = parseBulkImport(text);
+  const list = document.getElementById('bulkPreviewList');
+  list.innerHTML = '';
+  if(bulkParsedSections.length === 0){
+    list.innerHTML = `<div class="empty-state">No cards recognized yet. Check that each card's name is on its own line, spelled exactly as it appears elsewhere in the app (e.g. "Three of Wands", not "3 of Wands").</div>`;
+    document.getElementById('bulkImportBtn').style.display = 'none';
+    return;
+  }
+  const foundIds = new Set(bulkParsedSections.map(s=>s.card.id));
+  const missing = CARDS.filter(c=>!foundIds.has(c.id));
+  const summary = document.createElement('div');
+  summary.className = 'entry';
+  summary.innerHTML = `<div class="entry-body" style="font-weight:600;">${bulkParsedSections.length} card${bulkParsedSections.length===1?'':'s'} recognized${missing.length ? `, ${missing.length} not found in this paste` : ' — all 78!'}</div>`;
+  list.appendChild(summary);
+  bulkParsedSections.forEach(s=>{
+    const el = document.createElement('div');
+    el.className = 'entry bulk-preview-item';
+    const snippet = s.text.length > 90 ? s.text.slice(0,90)+'…' : s.text;
+    el.innerHTML = `<span style="font-weight:600;">${escapeHtml(s.card.name)}</span><span style="opacity:0.7; font-size:13px;">${escapeHtml(snippet)}</span>`;
+    list.appendChild(el);
+  });
+  if(missing.length){
+    const missingEl = document.createElement('div');
+    missingEl.className = 'entry bulk-preview-item unmatched';
+    missingEl.innerHTML = `<div><strong>Not found in this paste:</strong> ${missing.map(c=>escapeHtml(c.name)).join(', ')}</div>`;
+    list.appendChild(missingEl);
+  }
+  document.getElementById('bulkImportBtn').style.display = 'inline-block';
+}
+async function commitBulkImport(){
+  if(bulkParsedSections.length === 0) return;
+  const source = document.getElementById('bulkSourceInput').value.trim();
+  if(!confirm(`Create ${bulkParsedSections.length} new notes, one per card, sourced to "${source}"?`)) return;
+  bulkParsedSections.forEach((s, i)=>{
+    NOTES.push({
+      id: 'n'+Date.now()+'-'+i+'-'+Math.random().toString(36).slice(2,7),
+      cardIds: [s.card.id],
+      html: '<p>' + escapeHtml(s.text).replace(/\n/g,'<br>') + '</p>',
+      createdAt: Date.now(), updatedAt: Date.now(),
+      order: Date.now() + i,
+      isKeywords:false, isGuidance:false, isHerb:false,
+      source, sourceLink:''
+    });
+  });
+  await persistNotes();
+  alert(`${bulkParsedSections.length} notes created. Paste another batch, or head back to browse the deck.`);
+  document.getElementById('bulkPasteArea').value = '';
+  bulkParsedSections = [];
+  document.getElementById('bulkPreviewList').innerHTML = '';
+  document.getElementById('bulkImportBtn').style.display = 'none';
+}
+document.getElementById('bulkPreviewBtn').onclick = renderBulkPreview;
+document.getElementById('bulkImportBtn').onclick = commitBulkImport;
+
 function saveCardField(cardId, field, value){
   const existing = CARD_FIELDS[cardId] || {};
   existing[field] = value.trim();
@@ -1635,6 +1776,9 @@ function bootstrapRoute(){
   } else if(hash === 'astrology'){
     showAstrology(false);
     history.replaceState({view:'astrology'}, '', '#astrology');
+  } else if(hash === 'bulk-import'){
+    showBulkImport(false);
+    history.replaceState({view:'bulkImport'}, '', '#bulk-import');
   } else if(hash && allPages().some(c=>c.id===hash)){
     showCard(hash, false);
     history.replaceState({view:'card', cardId:hash}, '', location.hash);
