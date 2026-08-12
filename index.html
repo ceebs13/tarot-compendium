@@ -22,6 +22,7 @@
   --herb:#4f7942;
   --violet:#6b5b95;
   --teal:#3d7068;
+  --rust:#a8562e;
   --line: rgba(33,26,20,0.18);
   --shadow: 0 8px 24px rgba(20,14,8,0.25);
 }
@@ -233,30 +234,23 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   transition: opacity .15s ease, border-top-color .1s ease;
 }
 .entry.dragging{ opacity:0.4; }
-.entry.has-images{
-  border-left-color: var(--sage);
-  background-color: color-mix(in srgb, var(--parchment) 85%, var(--sage) 15%);
+.entry.has-images{ border-left-color: var(--sage); }
+.entry.astro-display{ border-left-color: var(--violet); }
+.entry.is-keywords{ border-left-color: var(--oxblood); }
+.entry.is-guidance{ border-left-color: var(--indigo); }
+.entry.is-herb{ border-left-color: var(--herb); }
+.entry.is-numerology{ border-left-color: var(--teal); }
+.entry.is-situation{ border-left-color: var(--rust); }
+.entry.is-situation summary{
+  cursor:pointer; list-style:none; color: var(--rust);
 }
-.entry.astro-display{
-  border-left-color: var(--violet);
-  background-color: color-mix(in srgb, var(--parchment) 85%, var(--violet) 15%);
+.entry.is-situation summary::-webkit-details-marker{ display:none; }
+.entry.is-situation summary::after{
+  content:' (click to open)'; font-weight:400; text-transform:none;
+  font-size:12px; opacity:0.6; font-family:'JetBrains Mono',monospace;
 }
-.entry.is-keywords{
-  border-left-color: var(--oxblood);
-  background-color: color-mix(in srgb, var(--parchment) 85%, var(--oxblood) 15%);
-}
-.entry.is-guidance{
-  border-left-color: var(--indigo);
-  background-color: color-mix(in srgb, var(--parchment) 85%, var(--indigo) 15%);
-}
-.entry.is-herb{
-  border-left-color: var(--herb);
-  background-color: color-mix(in srgb, var(--parchment) 85%, var(--herb) 15%);
-}
-.entry.is-numerology{
-  border-left-color: var(--teal);
-  background-color: color-mix(in srgb, var(--parchment) 85%, var(--teal) 15%);
-}
+.entry.is-situation[open] summary::after{ content:' (click to collapse)'; }
+.entry.is-situation[open] summary{ margin-bottom:10px; }
 .field-label-inline{ font-weight:700; text-transform:uppercase; }
 .entry-source{
   margin-top:10px;
@@ -284,7 +278,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry-actions span{ cursor:pointer; opacity:0.6; }
 .entry-actions span:hover{ opacity:1; }
 .entry-body{ font-family:'Raleway', sans-serif; font-size:14px; line-height:1.65; }
-.entry-body img{ width:200px; height:345px; max-width:100%; object-fit:fill; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; cursor:zoom-in; }
+.entry-body img{ width:clamp(80px, 22vw, 200px); aspect-ratio: 200/345; height:auto; max-width:100%; object-fit:fill; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; cursor:zoom-in; }
 .entry-body p{ margin:0 0 10px; }
 .entry-body ul, .entry-body ol{ margin:0 0 10px; padding-left:22px; }
 .entry-body blockquote{
@@ -369,7 +363,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   padding:12px 14px; font-size:15px; line-height:1.6; background:#fff;
   outline:none;
 }
-.editor img{ width:200px; height:345px; max-width:100%; object-fit:fill; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; }
+.editor img{ width:clamp(80px, 22vw, 200px); aspect-ratio: 200/345; height:auto; max-width:100%; object-fit:fill; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; }
 .editor:empty:before{ content: attr(data-placeholder); color:#9c9182; }
 
 .modal-footer{
@@ -536,6 +530,9 @@ input[type=file]{ display:none; }
         </label>
         <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
           <input type="checkbox" id="herbInput" style="width:auto;"/> Herb
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+          <input type="checkbox" id="situationInput" style="width:auto;"/> Situations
         </label>
       </div>
 
@@ -958,6 +955,9 @@ function noteHasImage(note){
 function noteIsNumerology(note){
   return note.cardIds.some(id => id==='pip-overview' || PIP_RANK_TAGS.some(t=>t.id===id));
 }
+function noteIsCourtWide(note){
+  return note.cardIds.some(id => id==='court-cards' || COURT_RANK_TAGS.some(t=>t.id===id));
+}
 function noteIsSuitWide(note){
   return note.cardIds.some(id => GROUP_TAGS.some(t=>t.id===id));
 }
@@ -976,18 +976,19 @@ function renderSourceLine(note){
   }
   return '';
 }
-// Order: images, then astrology (inserted separately at render time), then
-// keywords, then suit-wide notes, then numerology, then all regular notes,
-// then guidance, then herb — guidance/herb sink to the bottom even if also
-// keywords/suit-wide/numerology tagged, since that marking takes priority.
+// Order: images, suit-wide notes, court/numerology notes, astrology
+// (inserted separately at render time — sits right here), keywords, all
+// regular notes, situations, guidance, herb. Checked top to bottom in this
+// exact sequence, first match wins.
 function groupRank(note){
   if(noteHasImage(note)) return 0;
-  if(note.isGuidance) return 5;
-  if(note.isHerb) return 6;
-  if(note.isKeywords) return 1;
-  if(noteIsSuitWide(note)) return 2;
-  if(noteIsNumerology(note)) return 3;
-  return 4;
+  if(noteIsSuitWide(note)) return 1;
+  if(noteIsCourtWide(note) || noteIsNumerology(note)) return 2;
+  if(note.isKeywords) return 4;
+  if(note.isSituation) return 6;
+  if(note.isGuidance) return 7;
+  if(note.isHerb) return 8;
+  return 5; // regular notes
 }
 function pipNumberFor(note){
   const nums = note.cardIds.map(id => PIP_RANK_TAGS.find(t=>t.id===id)).filter(Boolean).map(t=>t.pipNumber);
@@ -1383,17 +1384,18 @@ function renderCard(cardId){
   }
   let astroInserted = false;
   list.forEach(note=>{
-    if(!astroInserted && !noteHasImage(note)){
+    if(!astroInserted && groupRank(note) >= 4){
       insertAstroLine();
       astroInserted = true;
     }
-    const el = document.createElement('div');
+    const el = document.createElement(note.isSituation ? 'details' : 'div');
     const isNumerology = noteIsNumerology(note);
     el.className = 'entry'
       + (noteHasImage(note) ? ' has-images' : '')
       + (note.isKeywords ? ' is-keywords' : '')
       + (note.isGuidance ? ' is-guidance' : '')
       + (note.isHerb ? ' is-herb' : '')
+      + (note.isSituation ? ' is-situation' : '')
       + (isNumerology ? ' is-numerology' : '');
     const labels = [];
     if(note.isKeywords) labels.push('Keywords');
@@ -1402,12 +1404,15 @@ function renderCard(cardId){
     if(isNumerology) labels.push('Numerology');
     const labelsHtml = labels.map(l=>`<div class="field-label-inline" style="margin-bottom:4px;">${l.toUpperCase()}:</div>`).join('');
     const otherTags = note.cardIds.filter(id=>id!==cardId).map(id=>allPages().find(c=>c.id===id)?.name).filter(Boolean);
-    el.innerHTML = `<div class="entry-meta">
+    const innerContent = `<div class="entry-meta">
         <span><span class="drag-handle" title="Drag to reorder">⠿⠿</span>${otherTags.length? ' Also on: '+otherTags.join(', '):''}</span>
         <span class="entry-actions"><span data-act="edit">✎ edit</span><span data-act="del">✕ delete</span></span>
       </div>
       <div class="entry-body">${labelsHtml}${note.html}</div>
       ${(note.source || note.sourceLink) ? `<div class="entry-source">(${renderSourceLine(note)})</div>` : ''}`;
+    el.innerHTML = note.isSituation
+      ? `<summary class="field-label-inline">SITUATIONS:</summary>${innerContent}`
+      : innerContent;
     el.querySelector('[data-act="edit"]').onclick = ()=> openModal(note.id);
     el.querySelector('[data-act="del"]').onclick = async ()=>{
       if(confirm('Delete this note? This removes it from every page it was tagged to.')){
@@ -1494,6 +1499,7 @@ function openModal(noteId){
     document.getElementById('keywordsInput').checked = !!note.isKeywords;
     document.getElementById('guidanceInput').checked = !!note.isGuidance;
     document.getElementById('herbInput').checked = !!note.isHerb;
+    document.getElementById('situationInput').checked = !!note.isSituation;
   } else {
     editor.innerHTML = '';
     selectedTags = currentCardId ? [currentCardId] : [];
@@ -1503,6 +1509,7 @@ function openModal(noteId){
     document.getElementById('keywordsInput').checked = false;
     document.getElementById('guidanceInput').checked = false;
     document.getElementById('herbInput').checked = false;
+    document.getElementById('situationInput').checked = false;
   }
   renderChips();
   tagInput.value = '';
@@ -1514,7 +1521,9 @@ function closeModal(){
   editingNoteId = null;
 }
 document.getElementById('modalClose').onclick = closeModal;
-overlay.addEventListener('click', e=>{ if(e.target===overlay) closeModal(); });
+// Deliberately NOT closing on click-outside — an accidental click used to
+// silently discard whatever you were writing. Closing now always requires
+// the × button, so nothing gets lost by mistake.
 
 document.getElementById('fabAdd').onclick = ()=> openModal(null);
 document.getElementById('addNoteForThisCard').onclick = ()=> openModal(null);
@@ -1670,6 +1679,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   const isKeywords = document.getElementById('keywordsInput').checked;
   const isGuidance = document.getElementById('guidanceInput').checked;
   const isHerb = document.getElementById('herbInput').checked;
+  const isSituation = document.getElementById('situationInput').checked;
   if(editingNoteId){
     const note = NOTES.find(n=>n.id===editingNoteId);
     note.html = html;
@@ -1680,6 +1690,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
     note.isKeywords = isKeywords;
     note.isGuidance = isGuidance;
     note.isHerb = isHerb;
+    note.isSituation = isSituation;
     if(orderVal !== '') note.order = Number(orderVal);
   } else {
     NOTES.push({
@@ -1687,7 +1698,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
       cardIds:[...selectedTags], html,
       createdAt: Date.now(), updatedAt: Date.now(),
       order: orderVal !== '' ? Number(orderVal) : Date.now(),
-      isKeywords, isGuidance, isHerb, source, sourceLink
+      isKeywords, isGuidance, isHerb, isSituation, source, sourceLink
     });
   }
   await persistNotes();
