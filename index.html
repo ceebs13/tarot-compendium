@@ -288,6 +288,8 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry-actions span:hover{ opacity:1; }
 .entry-body{ font-family:'Raleway', sans-serif; font-size:14px; line-height:1.65; }
 .entry-body img{ width:clamp(80px, 22vw, 200px); aspect-ratio: 200/345; height:auto; max-width:100%; object-fit:fill; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; cursor:zoom-in; }
+.entry-body img[data-remote-id]{ background: rgba(33,26,20,0.08); }
+.editor img[data-remote-id]{ background: rgba(33,26,20,0.08); }
 .entry-body p{ margin:0 0 10px; }
 .entry-body ul, .entry-body ol{ margin:0 0 10px; padding-left:22px; }
 .entry-body blockquote{
@@ -505,7 +507,29 @@ input[type=file]{ display:none; }
   <button class="btn ghost small" id="exportBtn">Export backup</button>
   <button class="btn ghost small" id="importBtn">Import</button>
   <input type="file" id="importFile" accept=".json"/>
+  <button class="btn ghost small" id="migrateImagesBtn">Migrate images to Dropbox</button>
 </footer>
+
+<div class="overlay" id="migrateOverlay">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <h3>Migrate images to Dropbox</h3>
+      <button class="modal-close" id="migrateClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="migrateIntro" style="margin-top:0;">This moves every image currently embedded in your notes out to its own file in Dropbox, and replaces it with a lightweight reference. Notes, tags, and everything else stay exactly as they are — this only touches how images are stored.</p>
+      <p style="font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--oxblood);">Please export a fresh backup before running this. It's your safety net if anything goes wrong partway through.</p>
+      <div id="migrateProgress" style="font-family:'JetBrains Mono',monospace; font-size:12px; max-height:260px; overflow-y:auto; background:#fff; border:1px solid rgba(33,26,20,0.15); border-radius:6px; padding:10px 12px; display:none; white-space:pre-wrap; line-height:1.6;"></div>
+    </div>
+    <div class="modal-footer">
+      <span id="migrateSummary" style="font-family:'JetBrains Mono',monospace; font-size:12px; opacity:0.75;"></span>
+      <span style="display:flex; gap:10px;">
+        <button class="btn" id="migrateExportFirstBtn">Export backup now</button>
+        <button class="btn primary" id="migrateStartBtn">Start migration</button>
+      </span>
+    </div>
+  </div>
+</div>
 
 <button class="fab" id="fabAdd">✎ New note</button>
 
@@ -806,6 +830,40 @@ async function dbxUpload(payload){
   }
 }
 
+// ---------- per-image Dropbox storage ----------
+// Each image lives at its own path instead of being embedded as base64
+// inside the notes JSON — so editing one note no longer means re-uploading
+// every image ever added to the app.
+const DROPBOX_IMAGES_FOLDER = "/images";
+function dropboxImagePath(id){ return DROPBOX_IMAGES_FOLDER + "/" + id; }
+async function dbxUploadImageBlob(id, blob){
+  const token = await getValidDropboxToken();
+  if(!token) throw new Error('Not connected to Dropbox');
+  const resp = await fetchWithTimeout('https://content.dropboxapi.com/2/files/upload', {
+    method:'POST',
+    headers:{
+      'Authorization':'Bearer '+token,
+      'Dropbox-API-Arg': JSON.stringify({path: dropboxImagePath(id), mode:'overwrite', mute:true}),
+      'Content-Type':'application/octet-stream'
+    },
+    body: blob
+  }, 60000);
+  if(!resp.ok){
+    const text = await resp.text().catch(()=>'');
+    throw new Error('Dropbox image upload failed: '+resp.status+' — '+text);
+  }
+}
+async function dbxDownloadImageBlob(id){
+  const token = await getValidDropboxToken();
+  if(!token) return null;
+  const resp = await fetchWithTimeout('https://content.dropboxapi.com/2/files/download', {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({path: dropboxImagePath(id)}) }
+  }, 60000);
+  if(!resp.ok) return null; // missing/unreachable — caller falls back to showing "unavailable"
+  return await resp.blob();
+}
+
 // Above a few MB, a single all-or-nothing upload gets fragile on slower or
 // higher-latency connections — one stall and the whole thing fails. Above
 // that size, this breaks the upload into small chunks instead, each sent
@@ -893,10 +951,18 @@ function mergeData(a, b){
 // of MB or more), so this stops being something you need to think about.
 const IDB_NAME = "tarot-compendium-db";
 const IDB_STORE = "kv";
+// Separate store for image blobs, keyed by image id. Kept apart from the
+// "kv" store (which holds notes/pages/fields as JSON) so image binaries
+// never have to be read or written as part of a JSON round-trip.
+const IDB_IMAGE_STORE = "images";
 function idbOpen(){
   return new Promise((resolve,reject)=>{
-    const req = indexedDB.open(IDB_NAME, 1);
-    req.onupgradeneeded = ()=> req.result.createObjectStore(IDB_STORE);
+    const req = indexedDB.open(IDB_NAME, 2);
+    req.onupgradeneeded = ()=>{
+      const db = req.result;
+      if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+      if(!db.objectStoreNames.contains(IDB_IMAGE_STORE)) db.createObjectStore(IDB_IMAGE_STORE);
+    };
     req.onsuccess = ()=> resolve(req.result);
     req.onerror = ()=> reject(req.error);
   });
@@ -918,6 +984,71 @@ async function idbGet(key){
     req.onsuccess = ()=> resolve(req.result);
     req.onerror = ()=> reject(req.error);
   });
+}
+
+// ---------- local image cache (IndexedDB) ----------
+async function idbImageSet(id, blob){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(IDB_IMAGE_STORE,'readwrite');
+    tx.objectStore(IDB_IMAGE_STORE).put(blob, id);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function idbImageGet(id){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(IDB_IMAGE_STORE,'readonly');
+    const req = tx.objectStore(IDB_IMAGE_STORE).get(id);
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function idbImageDelete(id){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(IDB_IMAGE_STORE,'readwrite');
+    tx.objectStore(IDB_IMAGE_STORE).delete(id);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+
+// A small queue of image ids that are cached locally but not yet confirmed
+// uploaded to Dropbox. Persisted (not just in-memory) so an interrupted
+// upload — closed tab, dropped connection — picks back up on next sync
+// instead of quietly leaving an image device-local forever.
+const PENDING_UPLOADS_KEY = "tarot-compendium-pending-image-uploads";
+async function getPendingImageUploads(){
+  try{ return (await idbGet(PENDING_UPLOADS_KEY)) || []; }catch(e){ return []; }
+}
+async function addPendingImageUpload(id){
+  const list = await getPendingImageUploads();
+  if(!list.includes(id)){ list.push(id); await idbSet(PENDING_UPLOADS_KEY, list); }
+}
+async function removePendingImageUpload(id){
+  const list = await getPendingImageUploads();
+  const next = list.filter(x=>x!==id);
+  await idbSet(PENDING_UPLOADS_KEY, next);
+}
+// Uploads whatever's left in the pending queue. Stops (rather than skips)
+// on the first failure so a dead connection doesn't burn through retries
+// for every queued image — it'll pick back up next sync.
+async function flushPendingImageUploads(){
+  if(!isDropboxConnected()) return;
+  const list = await getPendingImageUploads();
+  for(const id of list){
+    try{
+      const blob = await idbImageGet(id);
+      if(!blob){ await removePendingImageUpload(id); continue; }
+      await withRetry(()=>dbxUploadImageBlob(id, blob), 2, 3000);
+      await removePendingImageUpload(id);
+    }catch(e){
+      console.error('Image upload failed, will retry next sync:', id, e);
+      break;
+    }
+  }
 }
 
 async function loadLocalCache(){
@@ -950,6 +1081,7 @@ async function syncWithDropbox(){
     CARD_FIELDS = merged.cardFields;
     await saveLocalCache();
     await dbxUploadChunked(merged);
+    await flushPendingImageUploads();
     setSyncStatus('ok', 'Synced');
   }catch(e){
     console.error('Sync failed', e);
@@ -967,6 +1099,7 @@ async function persistNotes(){
   if(isDropboxConnected()){
     setSyncStatus('busy','Saving…');
     dbxUploadChunked({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS})
+      .then(()=> flushPendingImageUploads())
       .then(()=> setSyncStatus('ok','Synced'))
       .catch(e=>{
         console.error(e);
@@ -1512,6 +1645,43 @@ function renderCard(cardId){
     }
   }
   if(!astroInserted) insertAstroLine();
+  resolveImagesIn(entries);
+}
+
+// ---------- image reference resolution (local cache, then Dropbox) ----------
+// Object URLs are tracked per-container (stashed on the element itself) and
+// revoked only when that same container re-resolves — not globally. The
+// card view and the note editor both call this independently; a global list
+// would revoke the card view's image URLs the moment the edit modal opened
+// on top of it.
+function resolveImagesIn(container){
+  if(container._imgObjectUrls){
+    container._imgObjectUrls.forEach(url=> URL.revokeObjectURL(url));
+  }
+  const urls = [];
+  container._imgObjectUrls = urls;
+  container.querySelectorAll('img[data-remote-id]').forEach(img=>{
+    resolveOneImage(img, img.getAttribute('data-remote-id'), urls);
+  });
+}
+async function resolveOneImage(img, id, urls){
+  try{
+    let blob = await idbImageGet(id);
+    if(!blob){
+      blob = await dbxDownloadImageBlob(id);
+      if(blob){ try{ await idbImageSet(id, blob); }catch(e){ console.error(e); } }
+    }
+    if(blob){
+      const url = URL.createObjectURL(blob);
+      urls.push(url);
+      img.src = url;
+    } else {
+      img.alt = 'Image unavailable';
+    }
+  }catch(e){
+    console.error('Failed to resolve image', id, e);
+    img.alt = 'Image unavailable';
+  }
 }
 
 // ---------- image lightbox ----------
@@ -1576,6 +1746,7 @@ function openModal(noteId){
   if(noteId){
     const note = NOTES.find(n=>n.id===noteId);
     editor.innerHTML = note.html;
+    resolveImagesIn(editor);
     selectedTags = [...note.cardIds];
     document.getElementById('sourceInput').value = note.source || '';
     document.getElementById('sourceLinkInput').value = note.sourceLink || '';
@@ -1718,12 +1889,50 @@ document.getElementById('imgBtn').onclick = ()=> document.getElementById('imgFil
 document.getElementById('imgFile').addEventListener('change', async (e)=>{
   const files = Array.from(e.target.files || []);
   for(const file of files){
-    const dataUrl = await resizeImage(file, 600, 0.8);
-    editor.focus();
-    document.execCommand('insertHTML', false, `<img src="${dataUrl}">`);
+    await insertImageIntoEditor(file);
   }
   e.target.value = '';
 });
+// 1x1 transparent GIF — used as a placeholder src on reference images so
+// they show the reserved aspect-ratio box (styled with a faint background)
+// instead of the browser's broken-image icon while resolution is in flight.
+const BLANK_IMG_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+function dataUrlToBlob(dataUrl){
+  const [meta, b64] = dataUrl.split(',');
+  const mime = meta.match(/data:(.*?);base64/)[1];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], {type: mime});
+}
+function extForMime(mime){
+  if(mime==='image/png') return 'png';
+  if(mime==='image/gif') return 'gif';
+  if(mime==='image/webp') return 'webp';
+  return 'jpg';
+}
+function newImageId(ext){
+  return 'img-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
+}
+// New images: resize, cache locally right away (so it's available offline
+// immediately), insert a reference into the editor, and upload to Dropbox
+// in the background without blocking typing/saving.
+async function insertImageIntoEditor(file){
+  const dataUrl = await resizeImage(file, 600, 0.8);
+  const blob = dataUrlToBlob(dataUrl);
+  const ext = extForMime(blob.type);
+  const id = newImageId(ext);
+  try{ await idbImageSet(id, blob); }catch(e){ console.error('Local image cache failed', e); }
+  await addPendingImageUpload(id);
+  editor.focus();
+  // src is the freshly-made data URL for instant preview inside this editing
+  // session only — it gets stripped back out to just the reference on save.
+  document.execCommand('insertHTML', false, `<img data-remote-id="${id}" src="${dataUrl}">`);
+  if(isDropboxConnected()){
+    dbxUploadImageBlob(id, blob).then(()=> removePendingImageUpload(id))
+      .catch(e=> console.error('Background image upload failed, queued for retry on next sync', e));
+  }
+}
 function resizeImage(file, maxDim, quality){
   const preservesTransparency = /png|gif|webp/.test(file.type);
   return new Promise((resolve,reject)=>{
@@ -1752,11 +1961,48 @@ function resizeImage(file, maxDim, quality){
   });
 }
 
+// Finds any <img src="data:image/..."> still embedded inline (from before
+// the migration, or from a note nobody's touched since) inside a detached
+// container, caches each one locally, queues it for upload, and swaps the
+// embedded data for a lightweight reference. Images already carrying a
+// data-remote-id are left alone.
+async function convertInlineBase64Images(container){
+  const imgs = Array.from(container.querySelectorAll('img[src^="data:image"]:not([data-remote-id])'));
+  for(const img of imgs){
+    try{
+      const dataUrl = img.getAttribute('src');
+      const blob = dataUrlToBlob(dataUrl);
+      const ext = extForMime(blob.type);
+      const id = newImageId(ext);
+      await idbImageSet(id, blob);
+      await addPendingImageUpload(id);
+      img.setAttribute('data-remote-id', id);
+      img.setAttribute('src', BLANK_IMG_SRC);
+      if(isDropboxConnected()){
+        dbxUploadImageBlob(id, blob).then(()=> removePendingImageUpload(id))
+          .catch(e=> console.error('Background image upload failed, queued for retry on next sync', e));
+      }
+    }catch(e){
+      console.error('Could not convert an inline image, leaving it as-is', e);
+    }
+  }
+}
+
 // save / delete
 document.getElementById('saveNoteBtn').onclick = async ()=>{
-  const html = (codeMode ? editorCode.value : editor.innerHTML).trim();
+  let html = (codeMode ? editorCode.value : editor.innerHTML).trim();
   if(!html || html==='<br>'){ alert('Write something in the note first.'); return; }
   if(selectedTags.length===0){ alert('Tag this note to at least one card so it knows which page to appear on.'); return; }
+  {
+    // Convert any embedded base64 images to references, then drop the
+    // session-only preview src from every reference image before storing —
+    // display resolves it again from the local/Dropbox image cache.
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    await convertInlineBase64Images(tmp);
+    tmp.querySelectorAll('img[data-remote-id]').forEach(img=> img.setAttribute('src', BLANK_IMG_SRC));
+    html = tmp.innerHTML;
+  }
   const source = document.getElementById('sourceInput').value.trim();
   const sourceLink = document.getElementById('sourceLinkInput').value.trim();
   const orderVal = document.getElementById('orderInput').value.trim();
@@ -1845,6 +2091,93 @@ document.getElementById('importFile').addEventListener('change', (e)=>{
   };
   reader.readAsText(file);
 });
+
+// ---------- image migration (embedded base64 → Dropbox references) ----------
+function migrateLog(msg){
+  const el = document.getElementById('migrateProgress');
+  el.style.display = 'block';
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+async function migrateAllImages(){
+  const startBtn = document.getElementById('migrateStartBtn');
+  const exportBtnInModal = document.getElementById('migrateExportFirstBtn');
+  const summary = document.getElementById('migrateSummary');
+  startBtn.disabled = true;
+  exportBtnInModal.disabled = true;
+  document.getElementById('migrateProgress').textContent = '';
+  document.getElementById('migrateProgress').style.display = 'block';
+
+  function noteHasUnmigratedImage(note){
+    if(!note.html) return false;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = note.html;
+    return !!tmp.querySelector('img[src^="data:image"]:not([data-remote-id])');
+  }
+  const candidates = NOTES.filter(noteHasUnmigratedImage);
+  if(candidates.length===0){
+    migrateLog('No embedded images found — nothing to migrate.');
+    summary.textContent = 'Nothing to do.';
+    startBtn.disabled = false;
+    exportBtnInModal.disabled = false;
+    return;
+  }
+  migrateLog(`Found ${candidates.length} note(s) with embedded images. Starting — this can take a while for a lot of images, keep this tab open.`);
+  let noteCount = 0, imageCount = 0, failCount = 0;
+  for(const note of candidates){
+    const tmp = document.createElement('div');
+    tmp.innerHTML = note.html;
+    const imgs = Array.from(tmp.querySelectorAll('img[src^="data:image"]:not([data-remote-id])'));
+    let noteChanged = false;
+    for(const img of imgs){
+      try{
+        const dataUrl = img.getAttribute('src');
+        const blob = dataUrlToBlob(dataUrl);
+        const ext = extForMime(blob.type);
+        const id = newImageId(ext);
+        await idbImageSet(id, blob);
+        if(isDropboxConnected()){
+          await withRetry(()=>dbxUploadImageBlob(id, blob), 2, 3000);
+        } else {
+          await addPendingImageUpload(id); // will upload next time Dropbox connects/syncs
+        }
+        img.setAttribute('data-remote-id', id);
+        img.setAttribute('src', BLANK_IMG_SRC);
+        imageCount++;
+        noteChanged = true;
+      }catch(e){
+        failCount++;
+        console.error('Migration: failed on an image', e);
+        migrateLog(`  ⚠ one image failed to migrate and was left embedded as-is (${(e && e.message) || e})`);
+      }
+    }
+    if(noteChanged){
+      note.html = tmp.innerHTML;
+      note.updatedAt = Date.now();
+      noteCount++;
+      migrateLog(`✓ migrated ${imgs.length} image(s) in a note`);
+    }
+  }
+  migrateLog('Saving…');
+  await persistNotes();
+  migrateLog(`Done. ${imageCount} image(s) across ${noteCount} note(s) migrated${failCount ? `, ${failCount} failed and were left embedded` : ''}.`);
+  summary.textContent = `${imageCount} image(s) migrated`;
+  startBtn.disabled = false;
+  exportBtnInModal.disabled = false;
+  if(currentCardId) renderCard(currentCardId); else renderHome(document.getElementById('searchBox').value);
+}
+document.getElementById('migrateImagesBtn').onclick = ()=>{
+  document.getElementById('migrateProgress').style.display = 'none';
+  document.getElementById('migrateProgress').textContent = '';
+  document.getElementById('migrateSummary').textContent = '';
+  document.getElementById('migrateOverlay').classList.add('open');
+};
+document.getElementById('migrateClose').onclick = ()=> document.getElementById('migrateOverlay').classList.remove('open');
+document.getElementById('migrateExportFirstBtn').onclick = ()=> document.getElementById('exportBtn').click();
+document.getElementById('migrateStartBtn').onclick = ()=>{
+  if(!confirm('Have you exported a fresh backup just now? This migration rewrites every note that has an embedded image. It is safe, but only touch "Start" once you have a backup you trust in hand.')) return;
+  migrateAllImages();
+};
 
 document.getElementById('syncNowBtn').onclick = async ()=>{
   await syncWithDropbox();
