@@ -21,6 +21,7 @@
   --indigo:#4b5a7a;
   --herb:#4f7942;
   --violet:#6b5b95;
+  --blue:#3d6b95;
   --teal:#3d7068;
   --rust:#a8562e;
   --line: rgba(33,26,20,0.18);
@@ -233,25 +234,33 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   border-left: 4px solid var(--brass);
   transition: opacity .15s ease, border-top-color .1s ease;
 }
-.entry.dragging{ opacity:0.4; }
+.entry.regular-group{ padding:0; }
+.regular-note-item{ padding:20px 24px; }
+.regular-note-item.regular-note-divider{ border-top:1px solid rgba(33,26,20,0.15); }
+.entry.dragging, .regular-note-item.dragging{ opacity:0.4; }
 .entry.has-images{ border-left-color: var(--sage); }
-.entry.astro-display{ border-left-color: var(--violet); }
+.entry.astro-display{ border-left-color: var(--blue); }
 .entry.is-keywords{ border-left-color: var(--oxblood); }
-.entry.is-guidance{ border-left-color: var(--indigo); }
+.entry.is-guidance{ border-left-color: var(--violet); }
 .entry.is-herb{ border-left-color: var(--herb); }
 .entry.is-numerology{ border-left-color: var(--teal); }
 .entry.is-situation{ border-left-color: var(--rust); }
 .entry.is-situation summary{
   cursor:pointer; list-style:none; color: var(--rust);
+  font-family:'Raleway', sans-serif;
+  display:flex; align-items:center; gap:8px;
 }
 .entry.is-situation summary::-webkit-details-marker{ display:none; }
 .entry.is-situation summary::after{
-  content:' (click to open)'; font-weight:400; text-transform:none;
-  font-size:12px; opacity:0.6; font-family:'JetBrains Mono',monospace;
+  content:'▾'; display:inline-block; transition: transform 0.15s ease;
 }
-.entry.is-situation[open] summary::after{ content:' (click to collapse)'; }
+.entry.is-situation[open] summary::after{ transform: rotate(180deg); }
 .entry.is-situation[open] summary{ margin-bottom:10px; }
 .field-label-inline{ font-weight:700; text-transform:uppercase; }
+.entry.astro-display .field-label-inline{ color: var(--blue); }
+.entry.is-keywords .field-label-inline{ color: var(--oxblood); }
+.entry.is-guidance .field-label-inline{ color: var(--violet); }
+.entry.is-herb .field-label-inline{ color: var(--herb); }
 .entry-source{
   margin-top:10px;
   font-size:13px;
@@ -265,7 +274,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   font-family:'JetBrains Mono',monospace;
   color: var(--sage);
 }
-.entry.drag-over{ border-top:3px solid var(--oxblood); }
+.entry.drag-over, .regular-note-item.drag-over{ border-top:3px solid var(--oxblood); }
 .drag-handle{ cursor:grab; opacity:0.45; margin-right:8px; letter-spacing:-2px; }
 .drag-handle:hover{ opacity:0.8; }
 .drag-handle:active{ cursor:grabbing; }
@@ -771,7 +780,7 @@ async function dbxDownload(){
   const resp = await fetchWithTimeout('https://content.dropboxapi.com/2/files/download', {
     method:'POST',
     headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({path: DROPBOX_DATA_PATH}) }
-  });
+  }, 90000);
   if(resp.status===409) return { notes: [], customPages: [], cardFields: {} }; // no file saved yet
   if(!resp.ok){
     const text = await resp.text().catch(()=>'');
@@ -795,6 +804,51 @@ async function dbxUpload(payload){
     const text = await resp.text().catch(()=>'');
     throw new Error('Dropbox upload failed: '+resp.status+' — '+text);
   }
+}
+
+// Above a few MB, a single all-or-nothing upload gets fragile on slower or
+// higher-latency connections — one stall and the whole thing fails. Above
+// that size, this breaks the upload into small chunks instead, each sent
+// (and retried) independently via Dropbox's upload-session API, so a stall
+// on one piece doesn't sink the whole sync.
+const UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
+async function dbxUploadChunked(payload){
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  if(bytes.length <= UPLOAD_CHUNK_SIZE){
+    return withRetry(()=>dbxUpload(payload));
+  }
+  const token = await getValidDropboxToken();
+  if(!token) throw new Error('Not connected to Dropbox');
+  const total = bytes.length;
+
+  const startResp = await withRetry(()=>fetchWithTimeout('https://content.dropboxapi.com/2/files/upload_session/start', {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({close:false}), 'Content-Type':'application/octet-stream' },
+    body: bytes.slice(0, UPLOAD_CHUNK_SIZE)
+  }, 60000));
+  if(!startResp.ok){ const t = await startResp.text().catch(()=>''); throw new Error('Upload session start failed: '+startResp.status+' — '+t); }
+  const { session_id } = await startResp.json();
+  let offset = Math.min(UPLOAD_CHUNK_SIZE, total);
+
+  while(total - offset > UPLOAD_CHUNK_SIZE){
+    const chunk = bytes.slice(offset, offset + UPLOAD_CHUNK_SIZE);
+    const chunkOffset = offset;
+    const appendResp = await withRetry(()=>fetchWithTimeout('https://content.dropboxapi.com/2/files/upload_session/append_v2', {
+      method:'POST',
+      headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({cursor:{session_id, offset:chunkOffset}, close:false}), 'Content-Type':'application/octet-stream' },
+      body: chunk
+    }, 60000));
+    if(!appendResp.ok){ const t = await appendResp.text().catch(()=>''); throw new Error('Upload session append failed: '+appendResp.status+' — '+t); }
+    offset += chunk.length;
+  }
+
+  const lastChunk = bytes.slice(offset);
+  const finishResp = await withRetry(()=>fetchWithTimeout('https://content.dropboxapi.com/2/files/upload_session/finish', {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({cursor:{session_id, offset}, commit:{path: DROPBOX_DATA_PATH, mode:'overwrite', mute:true}}), 'Content-Type':'application/octet-stream' },
+    body: lastChunk
+  }, 60000));
+  if(!finishResp.ok){ const t = await finishResp.text().catch(()=>''); throw new Error('Upload session finish failed: '+finishResp.status+' — '+t); }
 }
 
 function setSyncStatus(state, label){
@@ -895,7 +949,7 @@ async function syncWithDropbox(){
     CUSTOM_PAGES = merged.customPages;
     CARD_FIELDS = merged.cardFields;
     await saveLocalCache();
-    await withRetry(()=>dbxUpload(merged));
+    await dbxUploadChunked(merged);
     setSyncStatus('ok', 'Synced');
   }catch(e){
     console.error('Sync failed', e);
@@ -912,7 +966,7 @@ async function persistNotes(){
   const localOk = await saveLocalCache();
   if(isDropboxConnected()){
     setSyncStatus('busy','Saving…');
-    withRetry(()=>dbxUpload({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS}))
+    dbxUploadChunked({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS})
       .then(()=> setSyncStatus('ok','Synced'))
       .catch(e=>{
         console.error(e);
@@ -1382,21 +1436,8 @@ function renderCard(cardId){
     }
     return;
   }
-  let astroInserted = false;
-  list.forEach(note=>{
-    if(!astroInserted && groupRank(note) >= 4){
-      insertAstroLine();
-      astroInserted = true;
-    }
-    const el = document.createElement(note.isSituation ? 'details' : 'div');
+  function buildNoteInnerHtml(note){
     const isNumerology = noteIsNumerology(note);
-    el.className = 'entry'
-      + (noteHasImage(note) ? ' has-images' : '')
-      + (note.isKeywords ? ' is-keywords' : '')
-      + (note.isGuidance ? ' is-guidance' : '')
-      + (note.isHerb ? ' is-herb' : '')
-      + (note.isSituation ? ' is-situation' : '')
-      + (isNumerology ? ' is-numerology' : '');
     const labels = [];
     if(note.isKeywords) labels.push('Keywords');
     if(note.isGuidance) labels.push('Guidance');
@@ -1404,29 +1445,72 @@ function renderCard(cardId){
     if(isNumerology) labels.push('Numerology');
     const labelsHtml = labels.map(l=>`<div class="field-label-inline" style="margin-bottom:4px;">${l.toUpperCase()}:</div>`).join('');
     const otherTags = note.cardIds.filter(id=>id!==cardId).map(id=>allPages().find(c=>c.id===id)?.name).filter(Boolean);
-    const innerContent = `<div class="entry-meta">
+    return `<div class="entry-meta">
         <span><span class="drag-handle" title="Drag to reorder">⠿⠿</span>${otherTags.length? ' Also on: '+otherTags.join(', '):''}</span>
         <span class="entry-actions"><span data-act="edit">✎ edit</span><span data-act="del">✕ delete</span></span>
       </div>
       <div class="entry-body">${labelsHtml}${note.html}</div>
       ${(note.source || note.sourceLink) ? `<div class="entry-source">(${renderSourceLine(note)})</div>` : ''}`;
-    el.innerHTML = note.isSituation
-      ? `<summary class="field-label-inline">SITUATIONS:</summary>${innerContent}`
-      : innerContent;
-    el.querySelector('[data-act="edit"]').onclick = ()=> openModal(note.id);
-    el.querySelector('[data-act="del"]').onclick = async ()=>{
+  }
+  function wireNoteControls(container, note){
+    container.querySelector('[data-act="edit"]').onclick = ()=> openModal(note.id);
+    container.querySelector('[data-act="del"]').onclick = async ()=>{
       if(confirm('Delete this note? This removes it from every page it was tagged to.')){
         NOTES = NOTES.filter(n=>n.id!==note.id);
         await persistNotes();
         renderCard(cardId);
       }
     };
-    entries.appendChild(el);
-    attachDragHandlers(el, el.querySelector('.drag-handle'), note.id);
-    el.querySelectorAll('.entry-body img').forEach(img=>{
+    attachDragHandlers(container, container.querySelector('.drag-handle'), note.id);
+    container.querySelectorAll('.entry-body img').forEach(img=>{
       img.addEventListener('click', ()=> openLightbox(img.src));
     });
-  });
+  }
+
+  let astroInserted = false;
+  let i = 0;
+  while(i < list.length){
+    const note = list[i];
+    if(!astroInserted && groupRank(note) >= 4){
+      insertAstroLine();
+      astroInserted = true;
+    }
+    if(groupRank(note) === 5){
+      // Regular notes sit together in one continuous box, no gaps between
+      // them — gather every consecutive regular note into a single group.
+      const group = [note];
+      let j = i+1;
+      while(j < list.length && groupRank(list[j]) === 5){ group.push(list[j]); j++; }
+      const groupEl = document.createElement('div');
+      groupEl.className = 'entry regular-group';
+      group.forEach((n, idx)=>{
+        const itemEl = document.createElement('div');
+        itemEl.className = 'regular-note-item' + (idx>0 ? ' regular-note-divider' : '');
+        itemEl.innerHTML = buildNoteInnerHtml(n);
+        groupEl.appendChild(itemEl);
+        wireNoteControls(itemEl, n);
+      });
+      entries.appendChild(groupEl);
+      i = j;
+    } else {
+      const el = document.createElement(note.isSituation ? 'details' : 'div');
+      const isNumerology = noteIsNumerology(note);
+      el.className = 'entry'
+        + (noteHasImage(note) ? ' has-images' : '')
+        + (note.isKeywords ? ' is-keywords' : '')
+        + (note.isGuidance ? ' is-guidance' : '')
+        + (note.isHerb ? ' is-herb' : '')
+        + (note.isSituation ? ' is-situation' : '')
+        + (isNumerology ? ' is-numerology' : '');
+      const innerContent = buildNoteInnerHtml(note);
+      el.innerHTML = note.isSituation
+        ? `<summary class="field-label-inline">SITUATIONS:</summary>${innerContent}`
+        : innerContent;
+      entries.appendChild(el);
+      wireNoteControls(el, note);
+      i++;
+    }
+  }
   if(!astroInserted) insertAstroLine();
 }
 
