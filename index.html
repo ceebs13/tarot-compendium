@@ -24,6 +24,7 @@
   --blue:#3d6b95;
   --teal:#3d7068;
   --rust:#a8562e;
+  --plum:#7a4a6b;
   --line: rgba(33,26,20,0.18);
   --shadow: 0 8px 24px rgba(20,14,8,0.25);
 }
@@ -238,8 +239,10 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .regular-note-item{ padding:20px 24px; }
 .regular-note-item.regular-note-divider{ border-top:1px solid rgba(33,26,20,0.15); }
 .entry.dragging, .regular-note-item.dragging{ opacity:0.4; }
-.entry.has-images{ border-left-color: var(--sage); }
 .entry.astro-display{ border-left-color: var(--blue); }
+.entry.is-suit-wide{ border-left-color: var(--indigo); }
+.entry.is-court-wide{ border-left-color: var(--plum); }
+.entry.has-images{ border-left-color: var(--sage); }
 .entry.is-keywords{ border-left-color: var(--oxblood); }
 .entry.is-guidance{ border-left-color: var(--violet); }
 .entry.is-herb{ border-left-color: var(--herb); }
@@ -248,6 +251,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.is-situation summary{
   cursor:pointer; list-style:none; color: var(--rust);
   font-family:'Raleway', sans-serif;
+  font-size:14px;
   display:flex; align-items:center; gap:8px;
 }
 .entry.is-situation summary::-webkit-details-marker{ display:none; }
@@ -478,14 +482,13 @@ input[type=file]{ display:none; }
     <span class="back-link" id="bulkImportBackLink">← all cards</span>
     <div class="page-header">
       <div class="page-title-block">
-        <div class="eyebrow">Temporary tool · delete whenever you're done with it</div>
         <div class="page-title">Bulk Import</div>
       </div>
     </div>
     <div class="bulk-form">
       <div class="bulk-field">
         <label for="bulkSourceInput">Source (applied to every note created)</label>
-        <input type="text" id="bulkSourceInput" value="Mary Sousa's Workbook"/>
+        <input type="text" id="bulkSourceInput" value=""/>
       </div>
       <div class="bulk-field">
         <label for="bulkPasteArea">Paste your text — each card's name on its own line, followed by its note text</label>
@@ -507,29 +510,7 @@ input[type=file]{ display:none; }
   <button class="btn ghost small" id="exportBtn">Export backup</button>
   <button class="btn ghost small" id="importBtn">Import</button>
   <input type="file" id="importFile" accept=".json"/>
-  <button class="btn ghost small" id="migrateImagesBtn">Migrate images to Dropbox</button>
 </footer>
-
-<div class="overlay" id="migrateOverlay">
-  <div class="modal" style="max-width:560px;">
-    <div class="modal-header">
-      <h3>Migrate images to Dropbox</h3>
-      <button class="modal-close" id="migrateClose">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p id="migrateIntro" style="margin-top:0;">This moves every image currently embedded in your notes out to its own file in Dropbox, and replaces it with a lightweight reference. Notes, tags, and everything else stay exactly as they are — this only touches how images are stored.</p>
-      <p style="font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--oxblood);">Please export a fresh backup before running this. It's your safety net if anything goes wrong partway through.</p>
-      <div id="migrateProgress" style="font-family:'JetBrains Mono',monospace; font-size:12px; max-height:260px; overflow-y:auto; background:#fff; border:1px solid rgba(33,26,20,0.15); border-radius:6px; padding:10px 12px; display:none; white-space:pre-wrap; line-height:1.6;"></div>
-    </div>
-    <div class="modal-footer">
-      <span id="migrateSummary" style="font-family:'JetBrains Mono',monospace; font-size:12px; opacity:0.75;"></span>
-      <span style="display:flex; gap:10px;">
-        <button class="btn" id="migrateExportFirstBtn">Export backup now</button>
-        <button class="btn primary" id="migrateStartBtn">Start migration</button>
-      </span>
-    </div>
-  </div>
-</div>
 
 <button class="fab" id="fabAdd">✎ New note</button>
 
@@ -1630,6 +1611,8 @@ function renderCard(cardId){
       const isNumerology = noteIsNumerology(note);
       el.className = 'entry'
         + (noteHasImage(note) ? ' has-images' : '')
+        + (noteIsSuitWide(note) ? ' is-suit-wide' : '')
+        + (noteIsCourtWide(note) ? ' is-court-wide' : '')
         + (note.isKeywords ? ' is-keywords' : '')
         + (note.isGuidance ? ' is-guidance' : '')
         + (note.isHerb ? ' is-herb' : '')
@@ -2091,93 +2074,6 @@ document.getElementById('importFile').addEventListener('change', (e)=>{
   };
   reader.readAsText(file);
 });
-
-// ---------- image migration (embedded base64 → Dropbox references) ----------
-function migrateLog(msg){
-  const el = document.getElementById('migrateProgress');
-  el.style.display = 'block';
-  el.textContent += msg + '\n';
-  el.scrollTop = el.scrollHeight;
-}
-async function migrateAllImages(){
-  const startBtn = document.getElementById('migrateStartBtn');
-  const exportBtnInModal = document.getElementById('migrateExportFirstBtn');
-  const summary = document.getElementById('migrateSummary');
-  startBtn.disabled = true;
-  exportBtnInModal.disabled = true;
-  document.getElementById('migrateProgress').textContent = '';
-  document.getElementById('migrateProgress').style.display = 'block';
-
-  function noteHasUnmigratedImage(note){
-    if(!note.html) return false;
-    const tmp = document.createElement('div');
-    tmp.innerHTML = note.html;
-    return !!tmp.querySelector('img[src^="data:image"]:not([data-remote-id])');
-  }
-  const candidates = NOTES.filter(noteHasUnmigratedImage);
-  if(candidates.length===0){
-    migrateLog('No embedded images found — nothing to migrate.');
-    summary.textContent = 'Nothing to do.';
-    startBtn.disabled = false;
-    exportBtnInModal.disabled = false;
-    return;
-  }
-  migrateLog(`Found ${candidates.length} note(s) with embedded images. Starting — this can take a while for a lot of images, keep this tab open.`);
-  let noteCount = 0, imageCount = 0, failCount = 0;
-  for(const note of candidates){
-    const tmp = document.createElement('div');
-    tmp.innerHTML = note.html;
-    const imgs = Array.from(tmp.querySelectorAll('img[src^="data:image"]:not([data-remote-id])'));
-    let noteChanged = false;
-    for(const img of imgs){
-      try{
-        const dataUrl = img.getAttribute('src');
-        const blob = dataUrlToBlob(dataUrl);
-        const ext = extForMime(blob.type);
-        const id = newImageId(ext);
-        await idbImageSet(id, blob);
-        if(isDropboxConnected()){
-          await withRetry(()=>dbxUploadImageBlob(id, blob), 2, 3000);
-        } else {
-          await addPendingImageUpload(id); // will upload next time Dropbox connects/syncs
-        }
-        img.setAttribute('data-remote-id', id);
-        img.setAttribute('src', BLANK_IMG_SRC);
-        imageCount++;
-        noteChanged = true;
-      }catch(e){
-        failCount++;
-        console.error('Migration: failed on an image', e);
-        migrateLog(`  ⚠ one image failed to migrate and was left embedded as-is (${(e && e.message) || e})`);
-      }
-    }
-    if(noteChanged){
-      note.html = tmp.innerHTML;
-      note.updatedAt = Date.now();
-      noteCount++;
-      migrateLog(`✓ migrated ${imgs.length} image(s) in a note`);
-    }
-  }
-  migrateLog('Saving…');
-  await persistNotes();
-  migrateLog(`Done. ${imageCount} image(s) across ${noteCount} note(s) migrated${failCount ? `, ${failCount} failed and were left embedded` : ''}.`);
-  summary.textContent = `${imageCount} image(s) migrated`;
-  startBtn.disabled = false;
-  exportBtnInModal.disabled = false;
-  if(currentCardId) renderCard(currentCardId); else renderHome(document.getElementById('searchBox').value);
-}
-document.getElementById('migrateImagesBtn').onclick = ()=>{
-  document.getElementById('migrateProgress').style.display = 'none';
-  document.getElementById('migrateProgress').textContent = '';
-  document.getElementById('migrateSummary').textContent = '';
-  document.getElementById('migrateOverlay').classList.add('open');
-};
-document.getElementById('migrateClose').onclick = ()=> document.getElementById('migrateOverlay').classList.remove('open');
-document.getElementById('migrateExportFirstBtn').onclick = ()=> document.getElementById('exportBtn').click();
-document.getElementById('migrateStartBtn').onclick = ()=>{
-  if(!confirm('Have you exported a fresh backup just now? This migration rewrites every note that has an embedded image. It is safe, but only touch "Start" once you have a backup you trust in hand.')) return;
-  migrateAllImages();
-};
 
 document.getElementById('syncNowBtn').onclick = async ()=>{
   await syncWithDropbox();
