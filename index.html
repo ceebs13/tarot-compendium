@@ -25,6 +25,7 @@
   --teal:#3d7068;
   --rust:#a8562e;
   --plum:#7a4a6b;
+  --rose:#b5576f;
   --line: rgba(33,26,20,0.18);
   --shadow: 0 8px 24px rgba(20,14,8,0.25);
 }
@@ -219,12 +220,12 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   display:block; font-family:'JetBrains Mono',monospace; font-size:11px;
   text-transform:uppercase; letter-spacing:0.08em; color:#5c4f3d; margin-bottom:6px;
 }
-.bulk-field input, .bulk-field textarea{
+.bulk-field input, .bulk-field textarea, .bulk-field select{
   width:100%; padding:8px 12px; border:1px solid rgba(33,26,20,0.2);
   border-radius:5px; font-family:'Source Serif 4',serif; font-size:14px;
   background:#fff; resize:vertical;
 }
-.bulk-field input:focus, .bulk-field textarea:focus{ outline:none; border-color: var(--brass); }
+.bulk-field input:focus, .bulk-field textarea:focus, .bulk-field select:focus{ outline:none; border-color: var(--brass); }
 .bulk-preview-item{ display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .bulk-preview-item.unmatched{ color: var(--oxblood); }
 .entry{
@@ -245,6 +246,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.has-images{ border-left-color: var(--sage); }
 .entry.is-keywords{ border-left-color: var(--oxblood); }
 .entry.is-guidance{ border-left-color: var(--violet); }
+.entry.is-affirmation{ border-left-color: var(--rose); }
 .entry.is-herb{ border-left-color: var(--herb); }
 .entry.is-numerology{ border-left-color: var(--teal); }
 .entry.is-situation{ border-left-color: var(--rust); }
@@ -264,6 +266,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.astro-display .field-label-inline{ color: var(--blue); }
 .entry.is-keywords .field-label-inline{ color: var(--oxblood); }
 .entry.is-guidance .field-label-inline{ color: var(--violet); }
+.entry.is-affirmation .field-label-inline{ color: var(--rose); }
 .entry.is-herb .field-label-inline{ color: var(--herb); }
 .entry.is-numerology .field-label-inline{ color: var(--teal); }
 .entry-source{
@@ -371,6 +374,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .toolbar button:disabled:hover{ background:transparent; }
 #codeToggleBtn{ width:auto; padding:0 10px; font-family:'JetBrains Mono',monospace; font-size:12px; }
 #codeToggleBtn.active{ background: var(--brass); color:#fff; }
+#plainPasteBtn.active{ background: var(--brass); color:#fff; }
 .toolbar button.b{ font-weight:700; }
 .toolbar button.i{ font-style:italic; }
 .editor{
@@ -492,6 +496,17 @@ input[type=file]{ display:none; }
         <input type="text" id="bulkSourceInput" value=""/>
       </div>
       <div class="bulk-field">
+        <label for="bulkTypeInput">Note type (applied to every note created)</label>
+        <select id="bulkTypeInput">
+          <option value="">Regular</option>
+          <option value="isKeywords">Keywords</option>
+          <option value="isGuidance">Guidance</option>
+          <option value="isAffirmation">Affirmation</option>
+          <option value="isHerb">Herb</option>
+          <option value="isSituation">Situations</option>
+        </select>
+      </div>
+      <div class="bulk-field">
         <label for="bulkPasteArea">Paste your text — each card's name on its own line, followed by its note text</label>
         <textarea id="bulkPasteArea" rows="14" style="font-family:'JetBrains Mono',monospace; font-size:13px;" placeholder="The Fool&#10;Whatever your notes say about The Fool, on one or several lines...&#10;&#10;The Magician&#10;Whatever your notes say about The Magician...&#10;&#10;(and so on, for as many cards as you're pasting in this batch)"></textarea>
       </div>
@@ -505,10 +520,9 @@ input[type=file]{ display:none; }
 </main>
 
 <footer class="app-footer">
-  <span class="back-link" id="bulkImportLink" style="cursor:pointer; margin-bottom:0;">Bulk Import</span>
   <span class="back-link" id="sourcesLink" style="cursor:pointer; margin-bottom:0;">Sources</span>
   <span class="back-link" id="astrologyLink" style="cursor:pointer; margin-bottom:0;">Astrology</span>
-  <button class="btn ghost small" id="exportBtn">Export backup</button>
+  <span class="back-link" id="bulkImportLink" style="cursor:pointer; margin-bottom:0;">Bulk Import</span>
   <button class="btn ghost small" id="importBtn">Import</button>
   <input type="file" id="importFile" accept=".json"/>
 </footer>
@@ -544,6 +558,9 @@ input[type=file]{ display:none; }
           <input type="checkbox" id="guidanceInput" style="width:auto;"/> Guidance
         </label>
         <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+          <input type="checkbox" id="affirmationInput" style="width:auto;"/> Affirmation
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
           <input type="checkbox" id="herbInput" style="width:auto;"/> Herb
         </label>
         <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
@@ -561,6 +578,7 @@ input[type=file]{ display:none; }
         <button data-cmd="formatBlock:BLOCKQUOTE" title="Quote">"</button>
         <button id="imgBtn" title="Insert image">🖼</button>
         <input type="file" id="imgFile" accept="image/*" multiple/>
+        <button id="plainPasteBtn" title="When on, pasted text keeps no formatting">Aa</button>
         <button id="codeToggleBtn" title="View/edit raw HTML" style="margin-left:auto;">&lt;/&gt;</button>
       </div>
       <div class="editor" id="editor" contenteditable="true" data-placeholder="Write your note here…"></div>
@@ -1147,8 +1165,8 @@ function renderSourceLine(note){
 }
 // Order: images, suit-wide notes, court/numerology notes, astrology
 // (inserted separately at render time — sits right here), keywords, all
-// regular notes, situations, guidance, herb. Checked top to bottom in this
-// exact sequence, first match wins.
+// regular notes, situations, guidance, affirmation, herb. Checked top to
+// bottom in this exact sequence, first match wins.
 function groupRank(note){
   if(noteHasImage(note)) return 0;
   if(noteIsSuitWide(note)) return 1;
@@ -1156,7 +1174,8 @@ function groupRank(note){
   if(note.isKeywords) return 4;
   if(note.isSituation) return 6;
   if(note.isGuidance) return 7;
-  if(note.isHerb) return 8;
+  if(note.isAffirmation) return 8;
+  if(note.isHerb) return 9;
   return 5; // regular notes
 }
 function pipNumberFor(note){
@@ -1474,6 +1493,9 @@ function renderBulkPreview(){
 async function commitBulkImport(){
   if(bulkParsedSections.length === 0) return;
   const source = document.getElementById('bulkSourceInput').value.trim();
+  const bulkType = document.getElementById('bulkTypeInput').value; // '' or one of isKeywords/isGuidance/isAffirmation/isHerb/isSituation
+  const typeFlags = { isKeywords:false, isGuidance:false, isAffirmation:false, isHerb:false, isSituation:false };
+  if(bulkType) typeFlags[bulkType] = true;
   if(!confirm(`Create ${bulkParsedSections.length} new notes, one per card, sourced to "${source}"?`)) return;
   bulkParsedSections.forEach((s, i)=>{
     NOTES.push({
@@ -1482,7 +1504,7 @@ async function commitBulkImport(){
       html: '<p>' + escapeHtml(s.text).replace(/\n/g,'<br>') + '</p>',
       createdAt: Date.now(), updatedAt: Date.now(),
       order: Date.now() + i,
-      isKeywords:false, isGuidance:false, isHerb:false,
+      ...typeFlags,
       source, sourceLink:''
     });
   });
@@ -1552,6 +1574,7 @@ function renderCard(cardId){
     const labels = [];
     if(note.isKeywords) labels.push('Keywords');
     if(note.isGuidance) labels.push('Guidance');
+    if(note.isAffirmation) labels.push('Affirmation');
     if(note.isHerb) labels.push('Herb');
     if(isNumerology) labels.push('Numerology');
     const labelsHtml = labels.map(l=>`<div class="field-label-inline" style="margin-bottom:4px;">${l.toUpperCase()}:</div>`).join('');
@@ -1612,6 +1635,7 @@ function renderCard(cardId){
         + (noteIsCourtWide(note) ? ' is-court-wide' : '')
         + (note.isKeywords ? ' is-keywords' : '')
         + (note.isGuidance ? ' is-guidance' : '')
+        + (note.isAffirmation ? ' is-affirmation' : '')
         + (note.isHerb ? ' is-herb' : '')
         + (note.isSituation ? ' is-situation' : '')
         + (isNumerology ? ' is-numerology' : '');
@@ -1745,6 +1769,7 @@ function openModal(noteId){
     document.getElementById('orderInput').value = (note.order !== undefined && note.order !== null) ? note.order : '';
     document.getElementById('keywordsInput').checked = !!note.isKeywords;
     document.getElementById('guidanceInput').checked = !!note.isGuidance;
+    document.getElementById('affirmationInput').checked = !!note.isAffirmation;
     document.getElementById('herbInput').checked = !!note.isHerb;
     document.getElementById('situationInput').checked = !!note.isSituation;
   } else {
@@ -1755,6 +1780,7 @@ function openModal(noteId){
     document.getElementById('orderInput').value = '';
     document.getElementById('keywordsInput').checked = false;
     document.getElementById('guidanceInput').checked = false;
+    document.getElementById('affirmationInput').checked = false;
     document.getElementById('herbInput').checked = false;
     document.getElementById('situationInput').checked = false;
   }
@@ -1874,6 +1900,20 @@ document.querySelectorAll('.toolbar [data-cmd]').forEach(btn=>{
       document.execCommand(cmd, false, null);
     }
   });
+});
+
+// plain-text paste toggle
+let plainPasteMode = false;
+const plainPasteBtn = document.getElementById('plainPasteBtn');
+plainPasteBtn.onclick = ()=>{
+  plainPasteMode = !plainPasteMode;
+  plainPasteBtn.classList.toggle('active', plainPasteMode);
+};
+editor.addEventListener('paste', (e)=>{
+  if(!plainPasteMode) return; // default rich paste, unchanged
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  document.execCommand('insertText', false, text);
 });
 
 // image insert with client-side resize
@@ -2000,6 +2040,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   const orderVal = document.getElementById('orderInput').value.trim();
   const isKeywords = document.getElementById('keywordsInput').checked;
   const isGuidance = document.getElementById('guidanceInput').checked;
+  const isAffirmation = document.getElementById('affirmationInput').checked;
   const isHerb = document.getElementById('herbInput').checked;
   const isSituation = document.getElementById('situationInput').checked;
   if(editingNoteId){
@@ -2011,6 +2052,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
     note.sourceLink = sourceLink;
     note.isKeywords = isKeywords;
     note.isGuidance = isGuidance;
+    note.isAffirmation = isAffirmation;
     note.isHerb = isHerb;
     note.isSituation = isSituation;
     if(orderVal !== '') note.order = Number(orderVal);
@@ -2020,7 +2062,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
       cardIds:[...selectedTags], html,
       createdAt: Date.now(), updatedAt: Date.now(),
       order: orderVal !== '' ? Number(orderVal) : Date.now(),
-      isKeywords, isGuidance, isHerb, isSituation, source, sourceLink
+      isKeywords, isGuidance, isAffirmation, isHerb, isSituation, source, sourceLink
     });
   }
   await persistNotes();
@@ -2038,15 +2080,6 @@ document.getElementById('deleteNoteBtn').onclick = async ()=>{
 };
 
 // backup export/import
-document.getElementById('exportBtn').onclick = ()=>{
-  const payload = { notes: NOTES, customPages: CUSTOM_PAGES, cardFields: CARD_FIELDS };
-  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'tarot-compendium-backup-'+new Date().toISOString().slice(0,10)+'.json';
-  a.click();
-  URL.revokeObjectURL(url);
-};
 document.getElementById('importBtn').onclick = ()=> document.getElementById('importFile').click();
 document.getElementById('importFile').addEventListener('change', (e)=>{
   const file = e.target.files[0];
