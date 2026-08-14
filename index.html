@@ -265,6 +265,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.is-keywords .field-label-inline{ color: var(--oxblood); }
 .entry.is-guidance .field-label-inline{ color: var(--violet); }
 .entry.is-herb .field-label-inline{ color: var(--herb); }
+.entry.is-numerology .field-label-inline{ color: var(--teal); }
 .entry-source{
   margin-top:10px;
   font-size:13px;
@@ -1389,15 +1390,11 @@ function renderSources(){
   entries.forEach(entry=>{
     const el = document.createElement('div');
     el.className = 'entry';
-    const linksHtml = entry.links.size
-      ? Array.from(entry.links).map(link=>`<div><a href="${escapeHtml(link)}" target="_blank" rel="noopener">${escapeHtml(link)}</a></div>`).join('')
-      : '';
     const pageLinksHtml = Array.from(entry.pageIds).map(id=>{
       const page = allPages().find(p=>p.id===id);
       return page ? `<span class="eyebrow-link source-page-link" data-goto="${id}">${escapeHtml(page.name)}</span>` : '';
     }).filter(Boolean).join(', ');
     el.innerHTML = `<div class="entry-body" style="font-size:17px; font-weight:600;">${escapeHtml(entry.title)}</div>
-      ${linksHtml ? `<div class="entry-source" style="margin:4px 0 8px; font-style:normal;">${linksHtml}</div>` : ''}
       <div class="entry-source" style="font-style:normal;">Appears on: ${pageLinksHtml || '—'}</div>`;
     list.appendChild(el);
     el.querySelectorAll('.source-page-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
@@ -1711,7 +1708,19 @@ async function reorderNotes(cardId, sourceId, targetId){
 }
 
 document.getElementById('backLink').onclick = showHome;
-document.getElementById('searchBox').addEventListener('input', e=> renderHome(e.target.value));
+document.getElementById('searchBox').addEventListener('input', e=>{
+  const val = e.target.value;
+  if(homeView.style.display !== 'block'){
+    currentCardId = null;
+    cardView.style.display = 'none';
+    document.getElementById('sourcesView').style.display = 'none';
+    document.getElementById('astrologyView').style.display = 'none';
+    document.getElementById('bulkImportView').style.display = 'none';
+    homeView.style.display = 'block';
+    history.pushState({view:'home'}, '', location.pathname + location.search);
+  }
+  renderHome(val);
+});
 
 // ---------- modal / editor ----------
 const overlay = document.getElementById('overlay');
