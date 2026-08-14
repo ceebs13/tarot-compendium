@@ -25,8 +25,8 @@
   --teal:#3d7068;
   --rust:#a8562e;
   --plum:#7a4a6b;
-  --rose:#b5576f;
-  --prisma:#14253f;
+  --rose:#A85F6A;
+  --prisma:#294b80;
   --line: rgba(33,26,20,0.18);
   --shadow: 0 8px 24px rgba(20,14,8,0.25);
 }
@@ -527,7 +527,6 @@ input[type=file]{ display:none; }
   <span class="back-link" id="sourcesLink" style="cursor:pointer; margin-bottom:0;">Sources</span>
   <span class="back-link" id="astrologyLink" style="cursor:pointer; margin-bottom:0;">Astrology</span>
   <span class="back-link" id="bulkImportLink" style="cursor:pointer; margin-bottom:0;">Bulk Import</span>
-  <button class="btn ghost small" id="prismaVisionsConvertBtn">Convert "Prisma Visions" notes</button>
 </footer>
 
 <button class="fab" id="fabAdd">✎ New note</button>
@@ -2090,23 +2089,6 @@ document.getElementById('deleteNoteBtn').onclick = async ()=>{
     closeModal();
     if(currentCardId) renderCard(currentCardId); else renderHome();
   }
-};
-
-// one-off: convert existing notes sourced from "Prisma Visions" to the
-// Prisma Visions note type. Matches the source field exactly (trimmed,
-// case-insensitive) — not a substring match, so "Prisma Visions Deck" would
-// NOT be converted, only notes whose source is precisely "Prisma Visions".
-document.getElementById('prismaVisionsConvertBtn').onclick = async ()=>{
-  const matches = NOTES.filter(n=> (n.source||'').trim().toLowerCase() === 'prisma visions' && !n.isPrismaVisions);
-  if(matches.length===0){
-    alert('No notes found with source exactly "Prisma Visions" that aren\'t already tagged as this type.');
-    return;
-  }
-  if(!confirm(`Found ${matches.length} note(s) sourced from "Prisma Visions". Tag them all as the Prisma Visions note type?`)) return;
-  matches.forEach(n=>{ n.isPrismaVisions = true; n.updatedAt = Date.now(); });
-  await persistNotes();
-  if(currentCardId) renderCard(currentCardId); else renderHome(document.getElementById('searchBox').value);
-  alert(`Done — ${matches.length} note(s) converted.`);
 };
 
 document.getElementById('syncNowBtn').onclick = async ()=>{
