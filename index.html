@@ -26,6 +26,7 @@
   --rust:#a8562e;
   --plum:#7a4a6b;
   --rose:#b5576f;
+  --prisma:#14253f;
   --line: rgba(33,26,20,0.18);
   --shadow: 0 8px 24px rgba(20,14,8,0.25);
 }
@@ -245,6 +246,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.is-court-wide{ border-left-color: var(--plum); }
 .entry.has-images{ border-left-color: var(--sage); }
 .entry.is-keywords{ border-left-color: var(--oxblood); }
+.entry.is-prisma-visions{ border-left-color: var(--prisma); }
 .entry.is-guidance{ border-left-color: var(--violet); }
 .entry.is-affirmation{ border-left-color: var(--rose); }
 .entry.is-herb{ border-left-color: var(--herb); }
@@ -265,6 +267,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .field-label-inline{ font-weight:700; text-transform:uppercase; }
 .entry.astro-display .field-label-inline{ color: var(--blue); }
 .entry.is-keywords .field-label-inline{ color: var(--oxblood); }
+.entry.is-prisma-visions .field-label-inline{ color: var(--prisma); }
 .entry.is-guidance .field-label-inline{ color: var(--violet); }
 .entry.is-affirmation .field-label-inline{ color: var(--rose); }
 .entry.is-herb .field-label-inline{ color: var(--herb); }
@@ -500,6 +503,7 @@ input[type=file]{ display:none; }
         <select id="bulkTypeInput">
           <option value="">Regular</option>
           <option value="isKeywords">Keywords</option>
+          <option value="isPrismaVisions">Prisma Visions</option>
           <option value="isGuidance">Guidance</option>
           <option value="isAffirmation">Affirmation</option>
           <option value="isHerb">Herb</option>
@@ -523,8 +527,7 @@ input[type=file]{ display:none; }
   <span class="back-link" id="sourcesLink" style="cursor:pointer; margin-bottom:0;">Sources</span>
   <span class="back-link" id="astrologyLink" style="cursor:pointer; margin-bottom:0;">Astrology</span>
   <span class="back-link" id="bulkImportLink" style="cursor:pointer; margin-bottom:0;">Bulk Import</span>
-  <button class="btn ghost small" id="importBtn">Import</button>
-  <input type="file" id="importFile" accept=".json"/>
+  <button class="btn ghost small" id="prismaVisionsConvertBtn">Convert "Prisma Visions" notes</button>
 </footer>
 
 <button class="fab" id="fabAdd">✎ New note</button>
@@ -553,6 +556,9 @@ input[type=file]{ display:none; }
       <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:4px;">
         <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
           <input type="checkbox" id="keywordsInput" style="width:auto;"/> Keywords
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+          <input type="checkbox" id="prismaVisionsInput" style="width:auto;"/> Prisma Visions
         </label>
         <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
           <input type="checkbox" id="guidanceInput" style="width:auto;"/> Guidance
@@ -1165,17 +1171,18 @@ function renderSourceLine(note){
 }
 // Order: images, suit-wide notes, court/numerology notes, astrology
 // (inserted separately at render time — sits right here), keywords, all
-// regular notes, situations, guidance, affirmation, herb. Checked top to
-// bottom in this exact sequence, first match wins.
+// regular notes, prisma visions, situations, guidance, affirmation, herb.
+// Checked top to bottom in this exact sequence, first match wins.
 function groupRank(note){
   if(noteHasImage(note)) return 0;
   if(noteIsSuitWide(note)) return 1;
   if(noteIsCourtWide(note) || noteIsNumerology(note)) return 2;
   if(note.isKeywords) return 4;
-  if(note.isSituation) return 6;
-  if(note.isGuidance) return 7;
-  if(note.isAffirmation) return 8;
-  if(note.isHerb) return 9;
+  if(note.isPrismaVisions) return 6;
+  if(note.isSituation) return 7;
+  if(note.isGuidance) return 8;
+  if(note.isAffirmation) return 9;
+  if(note.isHerb) return 10;
   return 5; // regular notes
 }
 function pipNumberFor(note){
@@ -1494,7 +1501,7 @@ async function commitBulkImport(){
   if(bulkParsedSections.length === 0) return;
   const source = document.getElementById('bulkSourceInput').value.trim();
   const bulkType = document.getElementById('bulkTypeInput').value; // '' or one of isKeywords/isGuidance/isAffirmation/isHerb/isSituation
-  const typeFlags = { isKeywords:false, isGuidance:false, isAffirmation:false, isHerb:false, isSituation:false };
+  const typeFlags = { isKeywords:false, isPrismaVisions:false, isGuidance:false, isAffirmation:false, isHerb:false, isSituation:false };
   if(bulkType) typeFlags[bulkType] = true;
   if(!confirm(`Create ${bulkParsedSections.length} new notes, one per card, sourced to "${source}"?`)) return;
   bulkParsedSections.forEach((s, i)=>{
@@ -1573,6 +1580,7 @@ function renderCard(cardId){
     const isNumerology = noteIsNumerology(note);
     const labels = [];
     if(note.isKeywords) labels.push('Keywords');
+    if(note.isPrismaVisions) labels.push('Prisma Visions');
     if(note.isGuidance) labels.push('Guidance');
     if(note.isAffirmation) labels.push('Affirmation');
     if(note.isHerb) labels.push('Herb');
@@ -1634,6 +1642,7 @@ function renderCard(cardId){
         + (noteIsSuitWide(note) ? ' is-suit-wide' : '')
         + (noteIsCourtWide(note) ? ' is-court-wide' : '')
         + (note.isKeywords ? ' is-keywords' : '')
+        + (note.isPrismaVisions ? ' is-prisma-visions' : '')
         + (note.isGuidance ? ' is-guidance' : '')
         + (note.isAffirmation ? ' is-affirmation' : '')
         + (note.isHerb ? ' is-herb' : '')
@@ -1768,6 +1777,7 @@ function openModal(noteId){
     document.getElementById('sourceLinkInput').value = note.sourceLink || '';
     document.getElementById('orderInput').value = (note.order !== undefined && note.order !== null) ? note.order : '';
     document.getElementById('keywordsInput').checked = !!note.isKeywords;
+    document.getElementById('prismaVisionsInput').checked = !!note.isPrismaVisions;
     document.getElementById('guidanceInput').checked = !!note.isGuidance;
     document.getElementById('affirmationInput').checked = !!note.isAffirmation;
     document.getElementById('herbInput').checked = !!note.isHerb;
@@ -1779,6 +1789,7 @@ function openModal(noteId){
     document.getElementById('sourceLinkInput').value = '';
     document.getElementById('orderInput').value = '';
     document.getElementById('keywordsInput').checked = false;
+    document.getElementById('prismaVisionsInput').checked = false;
     document.getElementById('guidanceInput').checked = false;
     document.getElementById('affirmationInput').checked = false;
     document.getElementById('herbInput').checked = false;
@@ -2039,6 +2050,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   const sourceLink = document.getElementById('sourceLinkInput').value.trim();
   const orderVal = document.getElementById('orderInput').value.trim();
   const isKeywords = document.getElementById('keywordsInput').checked;
+  const isPrismaVisions = document.getElementById('prismaVisionsInput').checked;
   const isGuidance = document.getElementById('guidanceInput').checked;
   const isAffirmation = document.getElementById('affirmationInput').checked;
   const isHerb = document.getElementById('herbInput').checked;
@@ -2051,6 +2063,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
     note.source = source;
     note.sourceLink = sourceLink;
     note.isKeywords = isKeywords;
+    note.isPrismaVisions = isPrismaVisions;
     note.isGuidance = isGuidance;
     note.isAffirmation = isAffirmation;
     note.isHerb = isHerb;
@@ -2062,7 +2075,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
       cardIds:[...selectedTags], html,
       createdAt: Date.now(), updatedAt: Date.now(),
       order: orderVal !== '' ? Number(orderVal) : Date.now(),
-      isKeywords, isGuidance, isAffirmation, isHerb, isSituation, source, sourceLink
+      isKeywords, isPrismaVisions, isGuidance, isAffirmation, isHerb, isSituation, source, sourceLink
     });
   }
   await persistNotes();
@@ -2079,43 +2092,22 @@ document.getElementById('deleteNoteBtn').onclick = async ()=>{
   }
 };
 
-// backup export/import
-document.getElementById('importBtn').onclick = ()=> document.getElementById('importFile').click();
-document.getElementById('importFile').addEventListener('change', (e)=>{
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = async (ev)=>{
-    try{
-      const parsed = JSON.parse(ev.target.result);
-      // Support both the current format ({notes, customPages, cardFields}) and
-      // older backups (plain array of notes, or missing cardFields).
-      const importedNotes = Array.isArray(parsed) ? parsed : (parsed.notes || []);
-      const importedPages = Array.isArray(parsed) ? [] : (parsed.customPages || []);
-      const importedFields = Array.isArray(parsed) ? {} : (parsed.cardFields || {});
-      if(!Array.isArray(importedNotes)) throw new Error('bad format');
-      const noteCount = importedNotes.length;
-      const pageCount = importedPages.length;
-      if(confirm(`Import ${noteCount} notes and ${pageCount} custom page(s)? This merges with what's already here (duplicates by id are skipped).`)){
-        const existingNoteIds = new Set(NOTES.map(n=>n.id));
-        importedNotes.forEach(n=>{ if(!existingNoteIds.has(n.id)) NOTES.push(n); });
-        const existingPageIds = new Set(CUSTOM_PAGES.map(p=>p.id));
-        importedPages.forEach(p=>{ if(!existingPageIds.has(p.id)) CUSTOM_PAGES.push(p); });
-        Object.entries(importedFields).forEach(([id,f])=>{
-          const existing = CARD_FIELDS[id];
-          if(!existing || (f.updatedAt||0) > (existing.updatedAt||0)) CARD_FIELDS[id] = f;
-        });
-        await persistNotes();
-        if(currentCardId) renderCard(currentCardId); else renderHome();
-        alert('Import complete.');
-      }
-    }catch(err){
-      alert('Could not read that file — make sure it\'s a backup exported from this app.');
-    }
-    e.target.value = '';
-  };
-  reader.readAsText(file);
-});
+// one-off: convert existing notes sourced from "Prisma Visions" to the
+// Prisma Visions note type. Matches the source field exactly (trimmed,
+// case-insensitive) — not a substring match, so "Prisma Visions Deck" would
+// NOT be converted, only notes whose source is precisely "Prisma Visions".
+document.getElementById('prismaVisionsConvertBtn').onclick = async ()=>{
+  const matches = NOTES.filter(n=> (n.source||'').trim().toLowerCase() === 'prisma visions' && !n.isPrismaVisions);
+  if(matches.length===0){
+    alert('No notes found with source exactly "Prisma Visions" that aren\'t already tagged as this type.');
+    return;
+  }
+  if(!confirm(`Found ${matches.length} note(s) sourced from "Prisma Visions". Tag them all as the Prisma Visions note type?`)) return;
+  matches.forEach(n=>{ n.isPrismaVisions = true; n.updatedAt = Date.now(); });
+  await persistNotes();
+  if(currentCardId) renderCard(currentCardId); else renderHome(document.getElementById('searchBox').value);
+  alert(`Done — ${matches.length} note(s) converted.`);
+};
 
 document.getElementById('syncNowBtn').onclick = async ()=>{
   await syncWithDropbox();
