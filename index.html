@@ -27,6 +27,7 @@
   --plum:#7a4a6b;
   --rose:#A85F6A;
   --prisma:#294b80;
+  --garnet:#8c1f3f;
   --line: rgba(33,26,20,0.18);
   --shadow: 0 8px 24px rgba(20,14,8,0.25);
 }
@@ -203,6 +204,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 }
 .eyebrow-link{ color: var(--brass-bright); text-decoration:underline; cursor:pointer; opacity:1; }
 .eyebrow-link:hover{ color:#fff; }
+.search-hit-snippet mark{ background: var(--brass-bright); color: var(--ink); padding:0 2px; border-radius:2px; }
 .page-title{
   font-family:'Fraunces', serif; font-weight:700;
   font-size:38px; color: var(--parchment);
@@ -246,6 +248,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.is-court-wide{ border-left-color: var(--plum); }
 .entry.has-images{ border-left-color: var(--sage); }
 .entry.is-keywords{ border-left-color: var(--oxblood); }
+.entry.is-personality{ border-left-color: var(--garnet); }
 .entry.is-prisma-visions{ border-left-color: var(--prisma); }
 .entry.is-guidance{ border-left-color: var(--violet); }
 .entry.is-affirmation{ border-left-color: var(--rose); }
@@ -267,6 +270,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .field-label-inline{ font-weight:700; text-transform:uppercase; }
 .entry.astro-display .field-label-inline{ color: var(--blue); }
 .entry.is-keywords .field-label-inline{ color: var(--oxblood); }
+.entry.is-personality .field-label-inline{ color: var(--garnet); }
 .entry.is-prisma-visions .field-label-inline{ color: var(--prisma); }
 .entry.is-guidance .field-label-inline{ color: var(--violet); }
 .entry.is-affirmation .field-label-inline{ color: var(--rose); }
@@ -464,6 +468,18 @@ input[type=file]{ display:none; }
     <div class="entries" id="entries"></div>
   </div>
 
+  <div id="noteSearchView" style="display:none;">
+    <span class="back-link" id="noteSearchBackLink">← all cards</span>
+    <div class="page-header">
+      <div class="page-title-block">
+        <div class="eyebrow">Searches the actual text inside every note</div>
+        <div class="page-title">Search Notes</div>
+      </div>
+    </div>
+    <div class="search-wrap"><input id="noteSearchInput" placeholder="Search inside notes…"/></div>
+    <div class="entries" id="noteSearchResults" style="margin-top:18px;"></div>
+  </div>
+
   <div id="sourcesView" style="display:none;">
     <span class="back-link" id="sourcesBackLink">← all cards</span>
     <div class="page-header">
@@ -524,6 +540,7 @@ input[type=file]{ display:none; }
 </main>
 
 <footer class="app-footer">
+  <span class="back-link" id="noteSearchLink" style="cursor:pointer; margin-bottom:0;">Search Notes</span>
   <span class="back-link" id="sourcesLink" style="cursor:pointer; margin-bottom:0;">Sources</span>
   <span class="back-link" id="astrologyLink" style="cursor:pointer; margin-bottom:0;">Astrology</span>
   <span class="back-link" id="bulkImportLink" style="cursor:pointer; margin-bottom:0;">Bulk Import</span>
@@ -555,6 +572,9 @@ input[type=file]{ display:none; }
       <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:4px;">
         <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
           <input type="checkbox" id="keywordsInput" style="width:auto;"/> Keywords
+        </label>
+        <label id="personalityLabel" style="display:none; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+          <input type="checkbox" id="personalityInput" style="width:auto;"/> Personality
         </label>
         <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
           <input type="checkbox" id="prismaVisionsInput" style="width:auto;"/> Prisma Visions
@@ -1094,27 +1114,37 @@ async function syncWithDropbox(){
   }
 }
 
-// Called after any local change: save the local cache (fast, no network),
-// then push to Dropbox in the background if connected — the caller does
-// NOT wait on the network call, so saving a note always feels instant
-// regardless of connection speed. Dropbox syncing quietly catches up
-// afterward, updating the status indicator when it's done.
+// Called after any local change: save the local cache immediately (fast,
+// no network), then reconcile with Dropbox — download whatever's currently
+// there, merge it with what's in memory here, save the merged result both
+// places. This step is essential: without it, two tabs (or two devices)
+// each holding their own snapshot of NOTES would silently clobber each
+// other on save, since the second one to save has no idea what the first
+// one just added. Merging against the live remote copy every time closes
+// that gap, at the cost of a small network round-trip per save.
 async function persistNotes(){
   const localOk = await saveLocalCache();
   if(isDropboxConnected()){
     setSyncStatus('busy','Saving…');
-    dbxUploadChunked({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS})
-      .then(()=> flushPendingImageUploads())
-      .then(()=> setSyncStatus('ok','Synced'))
-      .catch(e=>{
-        console.error(e);
-        setSyncStatus('error','Sync failed — saved locally');
-        if(!localOk){
-          alert("Could not save — neither the local cache nor Dropbox could be reached right now. Export a backup immediately if you can, so nothing is lost.");
-        }
-      });
+    try{
+      const remote = await withRetry(()=>dbxDownload());
+      const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS}, remote || {notes:[],customPages:[],cardFields:{}});
+      NOTES = merged.notes;
+      CUSTOM_PAGES = merged.customPages;
+      CARD_FIELDS = merged.cardFields;
+      await saveLocalCache();
+      await dbxUploadChunked(merged);
+      await flushPendingImageUploads();
+      setSyncStatus('ok','Synced');
+    }catch(e){
+      console.error(e);
+      setSyncStatus('error','Sync failed — saved locally');
+      if(!localOk){
+        alert("Could not save — neither the local cache nor Dropbox could be reached right now.");
+      }
+    }
   } else if(!localOk){
-    alert("Could not save — your browser blocked local storage, and Dropbox isn't connected. Export a backup immediately if you can, so nothing is lost.");
+    alert("Could not save — your browser blocked local storage, and Dropbox isn't connected.");
   }
 }
 async function persistCustomPages(){ await persistNotes(); }
@@ -1150,6 +1180,16 @@ function noteIsNumerology(note){
 function noteIsCourtWide(note){
   return note.cardIds.some(id => id==='court-cards' || COURT_RANK_TAGS.some(t=>t.id===id));
 }
+// Works on a raw tag id list (not just a saved note) so the editor can use
+// it live, before a note object even exists, to decide whether Personality
+// — a court-cards-only note type — should be offered as an option.
+function tagsIncludeCourtCard(tagIds){
+  return (tagIds||[]).some(id=>{
+    if(id==='court-cards' || COURT_RANK_TAGS.some(t=>t.id===id)) return true;
+    const card = CARDS.find(c=>c.id===id);
+    return !!(card && card.rankType==='court');
+  });
+}
 function noteIsSuitWide(note){
   return note.cardIds.some(id => GROUP_TAGS.some(t=>t.id===id));
 }
@@ -1169,20 +1209,22 @@ function renderSourceLine(note){
   return '';
 }
 // Order: images, suit-wide notes, court/numerology notes, astrology
-// (inserted separately at render time — sits right here), keywords, all
-// regular notes, prisma visions, situations, guidance, affirmation, herb.
-// Checked top to bottom in this exact sequence, first match wins.
+// (inserted separately at render time — sits right here), keywords,
+// personality, all regular notes, prisma visions, situations, guidance,
+// affirmation, herb. Checked top to bottom in this exact sequence, first
+// match wins.
 function groupRank(note){
   if(noteHasImage(note)) return 0;
   if(noteIsSuitWide(note)) return 1;
   if(noteIsCourtWide(note) || noteIsNumerology(note)) return 2;
   if(note.isKeywords) return 4;
-  if(note.isPrismaVisions) return 6;
-  if(note.isSituation) return 7;
-  if(note.isGuidance) return 8;
-  if(note.isAffirmation) return 9;
-  if(note.isHerb) return 10;
-  return 5; // regular notes
+  if(note.isPersonality) return 5;
+  if(note.isPrismaVisions) return 7;
+  if(note.isSituation) return 8;
+  if(note.isGuidance) return 9;
+  if(note.isAffirmation) return 10;
+  if(note.isHerb) return 11;
+  return 6; // regular notes
 }
 function pipNumberFor(note){
   const nums = note.cardIds.map(id => PIP_RANK_TAGS.find(t=>t.id===id)).filter(Boolean).map(t=>t.pipNumber);
@@ -1215,6 +1257,7 @@ const cardView = document.getElementById('cardView');
 function showHome(push=true){
   currentCardId = null;
   cardView.style.display = 'none';
+  document.getElementById('noteSearchView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
@@ -1225,6 +1268,7 @@ function showHome(push=true){
 function showCard(cardId, push=true){
   currentCardId = cardId;
   homeView.style.display = 'none';
+  document.getElementById('noteSearchView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
@@ -1236,6 +1280,7 @@ function showSources(push=true){
   currentCardId = null;
   homeView.style.display = 'none';
   cardView.style.display = 'none';
+  document.getElementById('noteSearchView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'block';
@@ -1246,6 +1291,7 @@ function showAstrology(push=true){
   currentCardId = null;
   homeView.style.display = 'none';
   cardView.style.display = 'none';
+  document.getElementById('noteSearchView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'block';
@@ -1256,10 +1302,22 @@ function showBulkImport(push=true){
   currentCardId = null;
   homeView.style.display = 'none';
   cardView.style.display = 'none';
+  document.getElementById('noteSearchView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'block';
   if(push) history.pushState({view:'bulkImport'}, '', '#bulk-import');
+}
+function showNoteSearch(push=true){
+  currentCardId = null;
+  homeView.style.display = 'none';
+  cardView.style.display = 'none';
+  document.getElementById('sourcesView').style.display = 'none';
+  document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('bulkImportView').style.display = 'none';
+  document.getElementById('noteSearchView').style.display = 'block';
+  renderNoteSearchResults(document.getElementById('noteSearchInput').value);
+  if(push) history.pushState({view:'noteSearch'}, '', '#search-notes');
 }
 // Makes the browser's own back/forward buttons move between pages inside
 // the app, instead of leaving it entirely.
@@ -1273,10 +1331,15 @@ window.addEventListener('popstate', (e)=>{
     showAstrology(false);
   } else if(state && state.view==='bulkImport'){
     showBulkImport(false);
+  } else if(state && state.view==='noteSearch'){
+    showNoteSearch(false);
   } else {
     showHome(false);
   }
 });
+document.getElementById('noteSearchLink').onclick = ()=> showNoteSearch();
+document.getElementById('noteSearchBackLink').onclick = ()=> showHome();
+document.getElementById('noteSearchInput').addEventListener('input', e=> renderNoteSearchResults(e.target.value));
 document.getElementById('sourcesLink').onclick = ()=> showSources();
 document.getElementById('astrologyLink').onclick = ()=> showAstrology();
 document.getElementById('bulkImportLink').onclick = ()=> showBulkImport();
@@ -1423,6 +1486,73 @@ function renderSources(){
       <div class="entry-source" style="font-style:normal;">Appears on: ${pageLinksHtml || '—'}</div>`;
     list.appendChild(el);
     el.querySelectorAll('.source-page-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
+  });
+}
+// Turns a note's stored HTML into plain readable text for searching —
+// browser-native via textContent, so entities/tags are handled correctly
+// without a hand-rolled regex.
+function noteToPlainText(html){
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html || '';
+  return tmp.textContent || '';
+}
+function renderNoteSearchResults(query){
+  updateNoteCount();
+  const container = document.getElementById('noteSearchResults');
+  container.innerHTML = '';
+  const q = (query || '').trim();
+  if(!q){
+    container.innerHTML = `<div class="empty-state">Type a word or phrase to search the actual text inside every note.</div>`;
+    return;
+  }
+  const qLower = q.toLowerCase();
+  const matches = [];
+  NOTES.forEach(note=>{
+    const text = noteToPlainText(note.html);
+    const idx = text.toLowerCase().indexOf(qLower);
+    if(idx !== -1) matches.push({note, text, idx});
+  });
+  if(matches.length===0){
+    container.innerHTML = `<div class="empty-state">No notes contain "${escapeHtml(q)}".</div>`;
+    return;
+  }
+  matches.sort((a,b)=> (b.note.updatedAt||0) - (a.note.updatedAt||0));
+
+  const heading = document.createElement('div');
+  heading.style.cssText = 'font-family:\'JetBrains Mono\',monospace; font-size:12px; opacity:0.7; margin-bottom:14px;';
+  heading.textContent = `${matches.length} note${matches.length===1?'':'s'} contain "${q}"`;
+  container.appendChild(heading);
+
+  matches.forEach(({note, text, idx})=>{
+    const el = document.createElement('div');
+    el.className = 'entry';
+    const cardLinksHtml = note.cardIds.map(cid=>{
+      const c = allPages().find(p=>p.id===cid);
+      return c ? `<span class="eyebrow-link result-card-link" data-goto="${cid}">${escapeHtml(c.name)}</span>` : '';
+    }).filter(Boolean).join(', ') || '<em>untagged</em>';
+
+    const contextChars = 60;
+    const start = Math.max(0, idx - contextChars);
+    const end = Math.min(text.length, idx + q.length + contextChars);
+    let snippet = text.slice(start, end).replace(/\s+/g, ' ').trim();
+    if(start > 0) snippet = '…' + snippet;
+    if(end < text.length) snippet = snippet + '…';
+    const snippetLower = snippet.toLowerCase();
+    const matchPos = snippetLower.indexOf(qLower);
+    let snippetHtml;
+    if(matchPos !== -1){
+      const before = escapeHtml(snippet.slice(0, matchPos));
+      const hit = escapeHtml(snippet.slice(matchPos, matchPos + q.length));
+      const after = escapeHtml(snippet.slice(matchPos + q.length));
+      snippetHtml = `${before}<mark>${hit}</mark>${after}`;
+    } else {
+      snippetHtml = escapeHtml(snippet);
+    }
+
+    el.innerHTML = `<div style="font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; opacity:0.65; margin-bottom:6px;">${cardLinksHtml}</div>
+      <div class="entry-body search-hit-snippet">${snippetHtml}</div>`;
+    el.querySelectorAll('.result-card-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
+    container.appendChild(el);
   });
 }
 function renderAstrology(){
@@ -1579,6 +1709,7 @@ function renderCard(cardId){
     const isNumerology = noteIsNumerology(note);
     const labels = [];
     if(note.isKeywords) labels.push('Keywords');
+    if(note.isPersonality) labels.push('Personality');
     if(note.isPrismaVisions) labels.push('Prisma Visions');
     if(note.isGuidance) labels.push('Guidance');
     if(note.isAffirmation) labels.push('Affirmation');
@@ -1641,6 +1772,7 @@ function renderCard(cardId){
         + (noteIsSuitWide(note) ? ' is-suit-wide' : '')
         + (noteIsCourtWide(note) ? ' is-court-wide' : '')
         + (note.isKeywords ? ' is-keywords' : '')
+        + (note.isPersonality ? ' is-personality' : '')
         + (note.isPrismaVisions ? ' is-prisma-visions' : '')
         + (note.isGuidance ? ' is-guidance' : '')
         + (note.isAffirmation ? ' is-affirmation' : '')
@@ -1745,6 +1877,7 @@ document.getElementById('searchBox').addEventListener('input', e=>{
   if(homeView.style.display !== 'block'){
     currentCardId = null;
     cardView.style.display = 'none';
+    document.getElementById('noteSearchView').style.display = 'none';
     document.getElementById('sourcesView').style.display = 'none';
     document.getElementById('astrologyView').style.display = 'none';
     document.getElementById('bulkImportView').style.display = 'none';
@@ -1776,6 +1909,7 @@ function openModal(noteId){
     document.getElementById('sourceLinkInput').value = note.sourceLink || '';
     document.getElementById('orderInput').value = (note.order !== undefined && note.order !== null) ? note.order : '';
     document.getElementById('keywordsInput').checked = !!note.isKeywords;
+    document.getElementById('personalityInput').checked = !!note.isPersonality;
     document.getElementById('prismaVisionsInput').checked = !!note.isPrismaVisions;
     document.getElementById('guidanceInput').checked = !!note.isGuidance;
     document.getElementById('affirmationInput').checked = !!note.isAffirmation;
@@ -1788,6 +1922,7 @@ function openModal(noteId){
     document.getElementById('sourceLinkInput').value = '';
     document.getElementById('orderInput').value = '';
     document.getElementById('keywordsInput').checked = false;
+    document.getElementById('personalityInput').checked = false;
     document.getElementById('prismaVisionsInput').checked = false;
     document.getElementById('guidanceInput').checked = false;
     document.getElementById('affirmationInput').checked = false;
@@ -1825,6 +1960,18 @@ function renderChips(){
     };
     chipsEl.appendChild(chip);
   });
+  updatePersonalityCheckboxVisibility();
+}
+// Personality only makes sense for court cards, so its checkbox only
+// appears once the note is tagged to at least one — an individual court
+// card, a "Page (all suits)"-style rank tag, or the overall Court Cards
+// tag. If the tags change so it's no longer applicable, uncheck it too,
+// rather than silently saving a stale flag on a note that's moved on.
+function updatePersonalityCheckboxVisibility(){
+  const label = document.getElementById('personalityLabel');
+  const show = tagsIncludeCourtCard(selectedTags);
+  label.style.display = show ? 'flex' : 'none';
+  if(!show) document.getElementById('personalityInput').checked = false;
 }
 
 tagInput.addEventListener('input', ()=>{
@@ -2049,6 +2196,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   const sourceLink = document.getElementById('sourceLinkInput').value.trim();
   const orderVal = document.getElementById('orderInput').value.trim();
   const isKeywords = document.getElementById('keywordsInput').checked;
+  const isPersonality = document.getElementById('personalityInput').checked;
   const isPrismaVisions = document.getElementById('prismaVisionsInput').checked;
   const isGuidance = document.getElementById('guidanceInput').checked;
   const isAffirmation = document.getElementById('affirmationInput').checked;
@@ -2062,6 +2210,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
     note.source = source;
     note.sourceLink = sourceLink;
     note.isKeywords = isKeywords;
+    note.isPersonality = isPersonality;
     note.isPrismaVisions = isPrismaVisions;
     note.isGuidance = isGuidance;
     note.isAffirmation = isAffirmation;
@@ -2074,7 +2223,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
       cardIds:[...selectedTags], html,
       createdAt: Date.now(), updatedAt: Date.now(),
       order: orderVal !== '' ? Number(orderVal) : Date.now(),
-      isKeywords, isPrismaVisions, isGuidance, isAffirmation, isHerb, isSituation, source, sourceLink
+      isKeywords, isPersonality, isPrismaVisions, isGuidance, isAffirmation, isHerb, isSituation, source, sourceLink
     });
   }
   await persistNotes();
