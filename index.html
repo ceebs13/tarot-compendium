@@ -738,7 +738,14 @@ async function withRetry(fn, retries=2, delayMs=4000){
 const STORAGE_KEY = "tarot-compendium-notes";
 const CUSTOM_PAGES_KEY = "tarot-compendium-custom-pages";
 const CARD_FIELDS_KEY = "tarot-compendium-card-fields";
+const DELETED_NOTES_KEY = "tarot-compendium-deleted-notes";
 let NOTES = []; // {id, cardIds:[], html, createdAt, updatedAt, order}
+// Tombstones for deleted notes: { [noteId]: deletedAt }. Merging is a union
+// of whatever's in memory here and whatever's on Dropbox — with no record
+// of a deletion, a note removed on one device would just reappear the next
+// time it merged with a copy elsewhere that still has it. This map is what
+// lets a deletion "stick" across devices instead of being silently undone.
+let DELETED_NOTES = {};
 
 // ---- Dropbox config ----
 const DROPBOX_APP_KEY = "raiwrwit2jr3l9p";
@@ -833,7 +840,7 @@ async function dbxDownload(){
     method:'POST',
     headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({path: DROPBOX_DATA_PATH}) }
   }, 90000);
-  if(resp.status===409) return { notes: [], customPages: [], cardFields: {} }; // no file saved yet
+  if(resp.status===409) return { notes: [], customPages: [], cardFields: {}, deletedNotes: {} }; // no file saved yet
   if(!resp.ok){
     const text = await resp.text().catch(()=>'');
     throw new Error('Dropbox download failed: '+resp.status+' — '+text);
@@ -955,12 +962,31 @@ function updateDropboxButton(){
 // devices this way — if you delete something on one device, hit "Sync"
 // on the other before trusting it's gone everywhere.
 function mergeData(a, b){
+  // Deletion tombstones: union of both sides, keeping the later deletedAt
+  // if both happen to have recorded the same id (shouldn't normally
+  // conflict, but favors the more recent deletion if it ever does).
+  const deletedMap = new Map();
+  Object.entries(a.deletedNotes||{}).forEach(([id,ts])=>deletedMap.set(id,ts));
+  Object.entries(b.deletedNotes||{}).forEach(([id,ts])=>{
+    const existing = deletedMap.get(id);
+    if(existing===undefined || ts > existing) deletedMap.set(id, ts);
+  });
+
   const noteMap = new Map();
   (a.notes||[]).forEach(n=>noteMap.set(n.id, n));
   (b.notes||[]).forEach(n=>{
     const existing = noteMap.get(n.id);
     if(!existing || (n.updatedAt||0) > (existing.updatedAt||0)) noteMap.set(n.id, n);
   });
+  // Drop anything with a tombstone, unless the surviving copy was actually
+  // edited after the deletion happened — e.g. undone via Import, or a
+  // rare same-note edit-vs-delete race. A plain resurrection via merge
+  // (no edit after the deletion timestamp) stays deleted.
+  deletedMap.forEach((deletedAt, id)=>{
+    const note = noteMap.get(id);
+    if(note && (note.updatedAt||0) <= deletedAt) noteMap.delete(id);
+  });
+
   const pageMap = new Map();
   (a.customPages||[]).forEach(p=>pageMap.set(p.id, p));
   (b.customPages||[]).forEach(p=>pageMap.set(p.id, p));
@@ -970,7 +996,12 @@ function mergeData(a, b){
     const existing = fieldsMap.get(id);
     if(!existing || (f.updatedAt||0) > (existing.updatedAt||0)) fieldsMap.set(id,f);
   });
-  return { notes: Array.from(noteMap.values()), customPages: Array.from(pageMap.values()), cardFields: Object.fromEntries(fieldsMap) };
+  return {
+    notes: Array.from(noteMap.values()),
+    customPages: Array.from(pageMap.values()),
+    cardFields: Object.fromEntries(fieldsMap),
+    deletedNotes: Object.fromEntries(deletedMap)
+  };
 }
 
 // Local cache now uses IndexedDB rather than localStorage — localStorage
@@ -1083,12 +1114,14 @@ async function loadLocalCache(){
   try{ NOTES = (await idbGet(STORAGE_KEY)) || []; }catch(e){ console.error('Local load failed', e); NOTES = []; }
   try{ CUSTOM_PAGES = (await idbGet(CUSTOM_PAGES_KEY)) || []; }catch(e){ console.error('Local load failed', e); CUSTOM_PAGES = []; }
   try{ CARD_FIELDS = (await idbGet(CARD_FIELDS_KEY)) || {}; }catch(e){ console.error('Local load failed', e); CARD_FIELDS = {}; }
+  try{ DELETED_NOTES = (await idbGet(DELETED_NOTES_KEY)) || {}; }catch(e){ console.error('Local load failed', e); DELETED_NOTES = {}; }
 }
 async function saveLocalCache(){
   try{
     await idbSet(STORAGE_KEY, NOTES);
     await idbSet(CUSTOM_PAGES_KEY, CUSTOM_PAGES);
     await idbSet(CARD_FIELDS_KEY, CARD_FIELDS);
+    await idbSet(DELETED_NOTES_KEY, DELETED_NOTES);
     return true;
   }catch(e){
     console.error("Local save failed", e);
@@ -1103,10 +1136,11 @@ async function syncWithDropbox(){
   setSyncStatus('busy', 'Syncing…');
   try{
     const remote = await withRetry(()=>dbxDownload());
-    const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS}, remote || {notes:[],customPages:[],cardFields:{}});
+    const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{}});
     NOTES = merged.notes;
     CUSTOM_PAGES = merged.customPages;
     CARD_FIELDS = merged.cardFields;
+    DELETED_NOTES = merged.deletedNotes;
     await saveLocalCache();
     await dbxUploadChunked(merged);
     await flushPendingImageUploads();
@@ -1131,10 +1165,11 @@ async function persistNotes(){
     setSyncStatus('busy','Saving…');
     try{
       const remote = await withRetry(()=>dbxDownload());
-      const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS}, remote || {notes:[],customPages:[],cardFields:{}});
+      const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{}});
       NOTES = merged.notes;
       CUSTOM_PAGES = merged.customPages;
       CARD_FIELDS = merged.cardFields;
+      DELETED_NOTES = merged.deletedNotes;
       await saveLocalCache();
       await dbxUploadChunked(merged);
       await flushPendingImageUploads();
@@ -2236,6 +2271,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
 document.getElementById('deleteNoteBtn').onclick = async ()=>{
   if(!editingNoteId) return;
   if(confirm('Delete this note?')){
+    DELETED_NOTES[editingNoteId] = Date.now();
     NOTES = NOTES.filter(n=>n.id!==editingNoteId);
     await persistNotes();
     closeModal();
