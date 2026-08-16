@@ -278,11 +278,14 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.is-numerology .field-label-inline{ color: var(--teal); }
 .entry-source{
   margin-top:10px;
-  font-size:13px;
-  font-style:italic;
-  color:#8a7a63;
+  font-size:12px;
+  font-family:'Raleway', sans-serif;
+  font-style:normal;
+  font-weight:400;
+  letter-spacing:-0.01em;
+  color:#98876f;
 }
-.entry-source a{ color:#8a7a63; }
+.entry-source a{ color:#98876f; }
 .entry-astro{
   margin-top:8px;
   font-size:13px;
@@ -1747,12 +1750,12 @@ function renderCard(cardId){
       insertAstroLine();
       astroInserted = true;
     }
-    if(groupRank(note) === 5){
+    if(groupRank(note) === 6){
       // Regular notes sit together in one continuous box, no gaps between
       // them — gather every consecutive regular note into a single group.
       const group = [note];
       let j = i+1;
-      while(j < list.length && groupRank(list[j]) === 5){ group.push(list[j]); j++; }
+      while(j < list.length && groupRank(list[j]) === 6){ group.push(list[j]); j++; }
       const groupEl = document.createElement('div');
       groupEl.className = 'entry regular-group';
       group.forEach((n, idx)=>{
