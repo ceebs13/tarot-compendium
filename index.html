@@ -112,6 +112,8 @@ body{
 }
 .btn.primary:hover{ background: var(--brass-bright); }
 .btn.ghost{ border-color: rgba(236,228,209,0.25); color: rgba(236,228,209,0.75); }
+#deleteNoteBtn{ border-color: rgba(110,42,52,0.4); color: var(--oxblood); }
+#deleteNoteBtn:hover{ background: rgba(110,42,52,0.08); border-color: var(--oxblood); }
 .btn.small{ font-size:12px; padding:5px 10px; }
 
 /* ---------- main / grid ---------- */
@@ -1766,6 +1768,7 @@ function renderCard(cardId){
     container.querySelector('[data-act="edit"]').onclick = ()=> openModal(note.id);
     container.querySelector('[data-act="del"]').onclick = async ()=>{
       if(confirm('Delete this note? This removes it from every page it was tagged to.')){
+        DELETED_NOTES[note.id] = Date.now();
         NOTES = NOTES.filter(n=>n.id!==note.id);
         await persistNotes();
         renderCard(cardId);
