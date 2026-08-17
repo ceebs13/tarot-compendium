@@ -817,6 +817,7 @@ function disconnectDropbox(){
   localStorage.removeItem('dbx_access_token');
   localStorage.removeItem('dbx_refresh_token');
   localStorage.removeItem('dbx_expires_at');
+  idbSet(LAST_SYNCED_HASH_KEY, null).catch(()=>{});
 }
 async function getValidDropboxToken(){
   const expiresAt = Number(localStorage.getItem('dbx_expires_at')||0);
@@ -868,6 +869,8 @@ async function dbxUpload(payload){
     const text = await resp.text().catch(()=>'');
     throw new Error('Dropbox upload failed: '+resp.status+' — '+text);
   }
+  const meta = await resp.json().catch(()=>null);
+  return meta && meta.content_hash;
 }
 
 // ---------- per-image Dropbox storage ----------
@@ -947,7 +950,34 @@ async function dbxUploadChunked(payload){
     body: lastChunk
   }, 60000));
   if(!finishResp.ok){ const t = await finishResp.text().catch(()=>''); throw new Error('Upload session finish failed: '+finishResp.status+' — '+t); }
+  const meta = await finishResp.json().catch(()=>null);
+  return meta && meta.content_hash;
 }
+
+// Lightweight check for whether the remote data file has changed since we
+// last saved it — a lot cheaper than downloading and parsing the whole
+// thing. Used to skip the full download+merge on routine saves when
+// nothing else has touched Dropbox since our last sync (the common case),
+// while still falling back to a full safe merge whenever something has.
+async function dbxGetMetadata(){
+  const token = await getValidDropboxToken();
+  if(!token) return null;
+  const resp = await fetchWithTimeout('https://api.dropboxapi.com/2/files/get_metadata', {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'application/json' },
+    body: JSON.stringify({ path: DROPBOX_DATA_PATH })
+  }, 20000);
+  if(resp.status===409) return null; // no file saved yet
+  if(!resp.ok){
+    const text = await resp.text().catch(()=>'');
+    throw new Error('Dropbox metadata check failed: '+resp.status+' — '+text);
+  }
+  const meta = await resp.json();
+  return meta.content_hash || null;
+}
+const LAST_SYNCED_HASH_KEY = "tarot-compendium-last-synced-hash";
+async function getLastSyncedHash(){ try{ return await idbGet(LAST_SYNCED_HASH_KEY); }catch(e){ return null; } }
+async function setLastSyncedHash(hash){ try{ await idbSet(LAST_SYNCED_HASH_KEY, hash); }catch(e){ console.error(e); } }
 
 function setSyncStatus(state, label){
   const el = document.getElementById('syncStatus');
@@ -1156,36 +1186,20 @@ async function syncWithDropbox(){
   if(!isDropboxConnected()) return;
   setSyncStatus('busy', 'Syncing…');
   try{
-    const remote = await withRetry(()=>dbxDownload());
-    const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{},deletedPages:{}});
-    NOTES = merged.notes;
-    CUSTOM_PAGES = merged.customPages;
-    CARD_FIELDS = merged.cardFields;
-    DELETED_NOTES = merged.deletedNotes;
-    DELETED_PAGES = merged.deletedPages;
-    await saveLocalCache();
-    await dbxUploadChunked(merged);
-    await flushPendingImageUploads();
-    setSyncStatus('ok', 'Synced');
-  }catch(e){
-    console.error('Sync failed', e);
-    setSyncStatus('error', 'Sync failed — saved locally');
-  }
-}
+    const lastHash = await getLastSyncedHash();
+    let remoteHash;
+    try{ remoteHash = await dbxGetMetadata(); }
+    catch(e){ remoteHash = undefined; }
 
-// Called after any local change: save the local cache immediately (fast,
-// no network), then reconcile with Dropbox — download whatever's currently
-// there, merge it with what's in memory here, save the merged result both
-// places. This step is essential: without it, two tabs (or two devices)
-// each holding their own snapshot of NOTES would silently clobber each
-// other on save, since the second one to save has no idea what the first
-// one just added. Merging against the live remote copy every time closes
-// that gap, at the cost of a small network round-trip per save.
-async function persistNotes(){
-  const localOk = await saveLocalCache();
-  if(isDropboxConnected()){
-    setSyncStatus('busy','Saving…');
-    try{
+    if(remoteHash !== undefined && lastHash && remoteHash === lastHash){
+      // Nothing's changed remotely — just push whatever's here, no need to
+      // download and merge against a copy we already know matches.
+      const payload = {notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES};
+      const newHash = await dbxUploadChunked(payload);
+      await flushPendingImageUploads();
+      if(newHash) await setLastSyncedHash(newHash);
+      setSyncStatus('ok', 'Synced');
+    } else {
       const remote = await withRetry(()=>dbxDownload());
       const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{},deletedPages:{}});
       NOTES = merged.notes;
@@ -1194,9 +1208,59 @@ async function persistNotes(){
       DELETED_NOTES = merged.deletedNotes;
       DELETED_PAGES = merged.deletedPages;
       await saveLocalCache();
-      await dbxUploadChunked(merged);
+      const newHash = await dbxUploadChunked(merged);
       await flushPendingImageUploads();
-      setSyncStatus('ok','Synced');
+      if(newHash) await setLastSyncedHash(newHash);
+      setSyncStatus('ok', 'Synced');
+    }
+  }catch(e){
+    console.error('Sync failed', e);
+    setSyncStatus('error', 'Sync failed — saved locally');
+  }
+}
+
+// Called after any local change: save the local cache immediately (fast,
+// no network), then reconcile with Dropbox. Before doing a full
+// download+merge (the safe-but-slower path that stops two tabs/devices
+// from clobbering each other), it first asks Dropbox for a lightweight
+// fingerprint of the remote file. If that fingerprint matches what we saw
+// last time we synced, nothing else has touched Dropbox since — so it's
+// safe to skip straight to uploading, no merge needed. Any mismatch (or
+// the check itself failing) falls back to the full safe download+merge,
+// so the multi-tab protection never actually weakens — it just gets
+// skipped on the routine case where it isn't needed.
+async function persistNotes(){
+  const localOk = await saveLocalCache();
+  if(isDropboxConnected()){
+    setSyncStatus('busy','Saving…');
+    try{
+      const lastHash = await getLastSyncedHash();
+      let remoteHash;
+      try{ remoteHash = await dbxGetMetadata(); }
+      catch(e){ remoteHash = undefined; } // couldn't check — treat as "unknown", go safe
+
+      if(remoteHash !== undefined && lastHash && remoteHash === lastHash){
+        // Fast path: remote hasn't changed since our last sync.
+        const payload = {notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES};
+        const newHash = await dbxUploadChunked(payload);
+        await flushPendingImageUploads();
+        if(newHash) await setLastSyncedHash(newHash);
+        setSyncStatus('ok','Synced');
+      } else {
+        // Safe path: something changed remotely (or we can't be sure) — full merge.
+        const remote = await withRetry(()=>dbxDownload());
+        const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{},deletedPages:{}});
+        NOTES = merged.notes;
+        CUSTOM_PAGES = merged.customPages;
+        CARD_FIELDS = merged.cardFields;
+        DELETED_NOTES = merged.deletedNotes;
+        DELETED_PAGES = merged.deletedPages;
+        await saveLocalCache();
+        const newHash = await dbxUploadChunked(merged);
+        await flushPendingImageUploads();
+        if(newHash) await setLastSyncedHash(newHash);
+        setSyncStatus('ok','Synced');
+      }
     }catch(e){
       console.error(e);
       setSyncStatus('error','Sync failed — saved locally');
