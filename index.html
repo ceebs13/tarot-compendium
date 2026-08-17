@@ -741,6 +741,7 @@ const STORAGE_KEY = "tarot-compendium-notes";
 const CUSTOM_PAGES_KEY = "tarot-compendium-custom-pages";
 const CARD_FIELDS_KEY = "tarot-compendium-card-fields";
 const DELETED_NOTES_KEY = "tarot-compendium-deleted-notes";
+const DELETED_PAGES_KEY = "tarot-compendium-deleted-pages";
 let NOTES = []; // {id, cardIds:[], html, createdAt, updatedAt, order}
 // Tombstones for deleted notes: { [noteId]: deletedAt }. Merging is a union
 // of whatever's in memory here and whatever's on Dropbox — with no record
@@ -748,6 +749,8 @@ let NOTES = []; // {id, cardIds:[], html, createdAt, updatedAt, order}
 // time it merged with a copy elsewhere that still has it. This map is what
 // lets a deletion "stick" across devices instead of being silently undone.
 let DELETED_NOTES = {};
+// Same idea, for custom pages: { [pageId]: deletedAt }.
+let DELETED_PAGES = {};
 
 // ---- Dropbox config ----
 const DROPBOX_APP_KEY = "raiwrwit2jr3l9p";
@@ -842,7 +845,7 @@ async function dbxDownload(){
     method:'POST',
     headers:{ 'Authorization':'Bearer '+token, 'Dropbox-API-Arg': JSON.stringify({path: DROPBOX_DATA_PATH}) }
   }, 90000);
-  if(resp.status===409) return { notes: [], customPages: [], cardFields: {}, deletedNotes: {} }; // no file saved yet
+  if(resp.status===409) return { notes: [], customPages: [], cardFields: {}, deletedNotes: {}, deletedPages: {} }; // no file saved yet
   if(!resp.ok){
     const text = await resp.text().catch(()=>'');
     throw new Error('Dropbox download failed: '+resp.status+' — '+text);
@@ -989,9 +992,22 @@ function mergeData(a, b){
     if(note && (note.updatedAt||0) <= deletedAt) noteMap.delete(id);
   });
 
+  // Same idea for custom pages — union of tombstones, later wins on conflict.
+  const deletedPagesMap = new Map();
+  Object.entries(a.deletedPages||{}).forEach(([id,ts])=>deletedPagesMap.set(id,ts));
+  Object.entries(b.deletedPages||{}).forEach(([id,ts])=>{
+    const existing = deletedPagesMap.get(id);
+    if(existing===undefined || ts > existing) deletedPagesMap.set(id, ts);
+  });
+
   const pageMap = new Map();
   (a.customPages||[]).forEach(p=>pageMap.set(p.id, p));
   (b.customPages||[]).forEach(p=>pageMap.set(p.id, p));
+  // Pages don't carry their own updatedAt (they're just id+name), so unlike
+  // notes there's no "edited after deletion" exception here — a tombstone
+  // always wins.
+  deletedPagesMap.forEach((deletedAt, id)=> pageMap.delete(id));
+
   const fieldsMap = new Map();
   Object.entries(a.cardFields||{}).forEach(([id,f])=>fieldsMap.set(id,f));
   Object.entries(b.cardFields||{}).forEach(([id,f])=>{
@@ -1002,7 +1018,8 @@ function mergeData(a, b){
     notes: Array.from(noteMap.values()),
     customPages: Array.from(pageMap.values()),
     cardFields: Object.fromEntries(fieldsMap),
-    deletedNotes: Object.fromEntries(deletedMap)
+    deletedNotes: Object.fromEntries(deletedMap),
+    deletedPages: Object.fromEntries(deletedPagesMap)
   };
 }
 
@@ -1117,6 +1134,7 @@ async function loadLocalCache(){
   try{ CUSTOM_PAGES = (await idbGet(CUSTOM_PAGES_KEY)) || []; }catch(e){ console.error('Local load failed', e); CUSTOM_PAGES = []; }
   try{ CARD_FIELDS = (await idbGet(CARD_FIELDS_KEY)) || {}; }catch(e){ console.error('Local load failed', e); CARD_FIELDS = {}; }
   try{ DELETED_NOTES = (await idbGet(DELETED_NOTES_KEY)) || {}; }catch(e){ console.error('Local load failed', e); DELETED_NOTES = {}; }
+  try{ DELETED_PAGES = (await idbGet(DELETED_PAGES_KEY)) || {}; }catch(e){ console.error('Local load failed', e); DELETED_PAGES = {}; }
 }
 async function saveLocalCache(){
   try{
@@ -1124,6 +1142,7 @@ async function saveLocalCache(){
     await idbSet(CUSTOM_PAGES_KEY, CUSTOM_PAGES);
     await idbSet(CARD_FIELDS_KEY, CARD_FIELDS);
     await idbSet(DELETED_NOTES_KEY, DELETED_NOTES);
+    await idbSet(DELETED_PAGES_KEY, DELETED_PAGES);
     return true;
   }catch(e){
     console.error("Local save failed", e);
@@ -1138,11 +1157,12 @@ async function syncWithDropbox(){
   setSyncStatus('busy', 'Syncing…');
   try{
     const remote = await withRetry(()=>dbxDownload());
-    const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{}});
+    const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{},deletedPages:{}});
     NOTES = merged.notes;
     CUSTOM_PAGES = merged.customPages;
     CARD_FIELDS = merged.cardFields;
     DELETED_NOTES = merged.deletedNotes;
+    DELETED_PAGES = merged.deletedPages;
     await saveLocalCache();
     await dbxUploadChunked(merged);
     await flushPendingImageUploads();
@@ -1167,11 +1187,12 @@ async function persistNotes(){
     setSyncStatus('busy','Saving…');
     try{
       const remote = await withRetry(()=>dbxDownload());
-      const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{}});
+      const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{},deletedPages:{}});
       NOTES = merged.notes;
       CUSTOM_PAGES = merged.customPages;
       CARD_FIELDS = merged.cardFields;
       DELETED_NOTES = merged.deletedNotes;
+      DELETED_PAGES = merged.deletedPages;
       await saveLocalCache();
       await dbxUploadChunked(merged);
       await flushPendingImageUploads();
@@ -1392,6 +1413,7 @@ document.getElementById('deletePageBtn').onclick = ()=>{
   const page = CUSTOM_PAGES.find(p=>p.id===currentCardId);
   if(!page) return;
   if(confirm(`Delete the page "${page.name}"? Notes tagged here stay saved, but this page will no longer exist to view them on — remove the tag from any note you want to keep visible elsewhere first.`)){
+    DELETED_PAGES[currentCardId] = Date.now();
     CUSTOM_PAGES = CUSTOM_PAGES.filter(p=>p.id!==currentCardId);
     persistCustomPages();
     showHome();
