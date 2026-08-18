@@ -550,7 +550,28 @@ input[type=file]{ display:none; }
   <span class="back-link" id="astrologyLink" style="cursor:pointer; margin-bottom:0;">Astrology</span>
   <span class="back-link" id="bulkImportLink" style="cursor:pointer; margin-bottom:0;">Bulk Import</span>
   <button class="btn ghost small" id="resizeImagesBtn">Resize oversized images</button>
+  <button class="btn ghost small" id="orphanImagesBtn">Find unused images</button>
 </footer>
+
+<div class="overlay" id="orphanImagesOverlay">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <h3>Find unused images</h3>
+      <button class="modal-close" id="orphanImagesClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-top:0;">Compares every file in your Dropbox images folder against every image your notes actually reference. Anything left over — usually from a deleted note — shows up here so you can review it and choose whether to delete it.</p>
+      <div id="orphanImagesProgress" style="font-family:'JetBrains Mono',monospace; font-size:12px; max-height:260px; overflow-y:auto; background:#fff; border:1px solid rgba(33,26,20,0.15); border-radius:6px; padding:10px 12px; display:none; white-space:pre-wrap; line-height:1.6;"></div>
+    </div>
+    <div class="modal-footer">
+      <span id="orphanImagesSummary" style="font-family:'JetBrains Mono',monospace; font-size:12px; opacity:0.75;"></span>
+      <span style="display:flex; gap:10px;">
+        <button class="btn" id="orphanImagesScanBtn">Scan</button>
+        <button class="btn primary" id="orphanImagesDeleteBtn" style="display:none;">Delete all listed</button>
+      </span>
+    </div>
+  </div>
+</div>
 
 <div class="overlay" id="resizeImagesOverlay">
   <div class="modal" style="max-width:560px;">
@@ -924,6 +945,43 @@ async function dbxDownloadImageBlob(id){
   }, 60000);
   if(!resp.ok) return null; // missing/unreachable — caller falls back to showing "unavailable"
   return await resp.blob();
+}
+// Lists every file currently sitting in the images folder on Dropbox —
+// used to find images nothing references any more (deleted notes, leftover
+// migration artifacts, etc.) rather than guessing from what's in NOTES.
+async function dbxListImagesFolder(){
+  const token = await getValidDropboxToken();
+  if(!token) return [];
+  let resp = await fetchWithTimeout('https://api.dropboxapi.com/2/files/list_folder', {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'application/json' },
+    body: JSON.stringify({ path: DROPBOX_IMAGES_FOLDER })
+  }, 30000);
+  if(resp.status===409) return []; // folder doesn't exist yet
+  if(!resp.ok){ const t = await resp.text().catch(()=>''); throw new Error('Dropbox list_folder failed: '+resp.status+' — '+t); }
+  let data = await resp.json();
+  let entries = (data.entries||[]).slice();
+  while(data.has_more){
+    resp = await fetchWithTimeout('https://api.dropboxapi.com/2/files/list_folder/continue', {
+      method:'POST',
+      headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'application/json' },
+      body: JSON.stringify({ cursor: data.cursor })
+    }, 30000);
+    if(!resp.ok){ const t = await resp.text().catch(()=>''); throw new Error('Dropbox list_folder continue failed: '+resp.status+' — '+t); }
+    data = await resp.json();
+    entries = entries.concat(data.entries||[]);
+  }
+  return entries.filter(e=>e['.tag']==='file').map(e=>({name:e.name, size:e.size}));
+}
+async function dbxDeleteImage(id){
+  const token = await getValidDropboxToken();
+  if(!token) throw new Error('Not connected to Dropbox');
+  const resp = await fetchWithTimeout('https://api.dropboxapi.com/2/files/delete_v2', {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'application/json' },
+    body: JSON.stringify({ path: dropboxImagePath(id) })
+  }, 20000);
+  if(!resp.ok){ const t = await resp.text().catch(()=>''); throw new Error('Dropbox delete failed: '+resp.status+' — '+t); }
 }
 
 // Above a few MB, a single all-or-nothing upload gets fragile on slower or
@@ -2472,6 +2530,94 @@ document.getElementById('resizeImagesClose').onclick = ()=> document.getElementB
 document.getElementById('resizeImagesStartBtn').onclick = ()=>{
   if(!confirm('This checks and resizes every image your notes reference. It can take a while and will use some bandwidth — best run when you have a decent connection. Continue?')) return;
   resizeExistingImages();
+};
+
+// ---------- one-off: find images nothing references any more ----------
+function orphanImagesLog(msg){
+  const el = document.getElementById('orphanImagesProgress');
+  el.style.display = 'block';
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+let orphanImageList = []; // populated by a scan, consumed by the delete step
+async function scanForOrphanedImages(){
+  const scanBtn = document.getElementById('orphanImagesScanBtn');
+  const deleteBtn = document.getElementById('orphanImagesDeleteBtn');
+  const summary = document.getElementById('orphanImagesSummary');
+  scanBtn.disabled = true;
+  deleteBtn.style.display = 'none';
+  document.getElementById('orphanImagesProgress').textContent = '';
+  document.getElementById('orphanImagesProgress').style.display = 'block';
+  orphanImageList = [];
+
+  try{
+    orphanImagesLog('Reading every image reference in your notes…');
+    const referenced = new Set();
+    NOTES.forEach(n=>{
+      const matches = (n.html||'').matchAll(/data-remote-id="([^"]+)"/g);
+      for(const m of matches) referenced.add(m[1]);
+    });
+    orphanImagesLog(`Found ${referenced.size} referenced image(s).`);
+
+    orphanImagesLog('Listing files in your Dropbox images folder…');
+    const files = await dbxListImagesFolder();
+    orphanImagesLog(`Found ${files.length} file(s) in Dropbox.`);
+
+    const orphans = files.filter(f => !referenced.has(f.name));
+    orphanImageList = orphans;
+
+    if(orphans.length===0){
+      orphanImagesLog('\nNothing unused — every file in Dropbox is referenced by a note.');
+      summary.textContent = 'Nothing to clean up.';
+    } else {
+      const totalBytes = orphans.reduce((sum,f)=> sum + (f.size||0), 0);
+      orphanImagesLog(`\n${orphans.length} unused file(s), ${(totalBytes/1024/1024).toFixed(2)} MB total:\n`);
+      orphans.forEach(f=> orphanImagesLog(`  ${f.name}  (${(f.size/1024).toFixed(0)}KB)`));
+      summary.textContent = `${orphans.length} unused file(s) found`;
+      deleteBtn.style.display = 'inline-block';
+    }
+  }catch(e){
+    console.error(e);
+    orphanImagesLog(`\n⚠ Scan failed: ${(e && e.message) || e}`);
+    summary.textContent = 'Scan failed.';
+  }
+  scanBtn.disabled = false;
+}
+async function deleteOrphanedImages(){
+  const deleteBtn = document.getElementById('orphanImagesDeleteBtn');
+  const summary = document.getElementById('orphanImagesSummary');
+  deleteBtn.disabled = true;
+  let deleted=0, failed=0;
+  for(const f of orphanImageList){
+    try{
+      await dbxDeleteImage(f.name);
+      try{ await idbImageDelete(f.name); }catch(e){}
+      deleted++;
+      orphanImagesLog(`✓ deleted ${f.name}`);
+    }catch(e){
+      failed++;
+      console.error('Could not delete', f.name, e);
+      orphanImagesLog(`  ⚠ couldn't delete ${f.name} (${(e && e.message) || e})`);
+    }
+  }
+  orphanImagesLog(`\nDone. Deleted ${deleted}${failed ? `, ${failed} failed` : ''}.`);
+  summary.textContent = `${deleted} deleted`;
+  deleteBtn.style.display = 'none';
+  orphanImageList = [];
+}
+document.getElementById('orphanImagesBtn').onclick = ()=>{
+  document.getElementById('orphanImagesProgress').style.display = 'none';
+  document.getElementById('orphanImagesProgress').textContent = '';
+  document.getElementById('orphanImagesSummary').textContent = '';
+  document.getElementById('orphanImagesDeleteBtn').style.display = 'none';
+  document.getElementById('orphanImagesOverlay').classList.add('open');
+};
+document.getElementById('orphanImagesClose').onclick = ()=> document.getElementById('orphanImagesOverlay').classList.remove('open');
+document.getElementById('orphanImagesScanBtn').onclick = scanForOrphanedImages;
+document.getElementById('orphanImagesDeleteBtn').onclick = ()=>{
+  if(orphanImageList.length===0) return;
+  if(!confirm(`Permanently delete ${orphanImageList.length} unused image file(s) from Dropbox? This can't be undone — review the list above first.`)) return;
+  deleteOrphanedImages();
 };
 
 document.getElementById('syncNowBtn').onclick = async ()=>{
