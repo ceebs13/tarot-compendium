@@ -571,6 +571,11 @@ input[type=file]{ display:none; }
         <div class="chips" id="chips"></div>
       </div>
 
+      <label id="cascadeLabel" style="display:none; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226; margin:10px 0 0;">
+        <input type="checkbox" id="cascadeInput" style="width:auto;" checked/> Cascade to every card in this group
+      </label>
+      <div id="cascadeHint" style="display:none; font-size:12px; color:#8a7f6e; margin:2px 0 0; font-family:'Source Serif 4',serif;">Unchecked, this note stays only on this group's own overview page — it won't appear on each individual card below.</div>
+
       <label class="field-label">Order</label>
       <input type="number" class="tag-input" id="orderInput" placeholder="lower numbers show first — leave blank to just add to the end"/>
       <label class="field-label" style="margin-top:10px;">Note type</label>
@@ -1355,6 +1360,19 @@ function tagsIncludeCourtCard(tagIds){
 function noteIsSuitWide(note){
   return note.cardIds.some(id => GROUP_TAGS.some(t=>t.id===id));
 }
+// True for any tag that normally cascades a note down onto multiple member
+// cards (suit tags, the overall Court/Pip tags, and the individual rank
+// tags) — as opposed to a single specific card. Used to decide whether the
+// "cascade to every card" checkbox is relevant for the current tag set, and
+// works on a raw tag id list so the editor can use it live, before a note
+// object exists yet.
+function tagsIncludeGroupTag(tagIds){
+  return (tagIds||[]).some(id =>
+    GROUP_TAGS.some(t=>t.id===id) ||
+    id==='court-cards' || COURT_RANK_TAGS.some(t=>t.id===id) ||
+    id==='pip-overview' || PIP_RANK_TAGS.some(t=>t.id===id)
+  );
+}
 function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -1374,7 +1392,9 @@ function renderSourceLine(note){
 // (inserted separately at render time — sits right here), keywords,
 // personality, all regular notes, prisma visions, situations, guidance,
 // affirmation, herb. Checked top to bottom in this exact sequence, first
-// match wins.
+// match wins. Note: pageOnly (see notesForCard) only affects WHICH pages a
+// note appears on, not its rank once it's decided to show on a given page —
+// a pageOnly suit note still ranks as suit-wide (1) on its own group page.
 function groupRank(note){
   if(noteHasImage(note)) return 0;
   if(noteIsSuitWide(note)) return 1;
@@ -1394,7 +1414,18 @@ function pipNumberFor(note){
 }
 function notesForCard(cardId){
   const ids = relevantTagIdsFor(cardId);
-  const list = NOTES.filter(n=> n.cardIds.some(id=>ids.includes(id)));
+  // A note matches a card either because it's tagged directly to that card
+  // (id === cardId), or because it's tagged to a group/court/pip tag that
+  // cascades onto it. Notes marked pageOnly opt out of the cascade — they
+  // only count as matching via a direct tag, so they stay on their group's
+  // own overview page (where id === cardId) and don't spill onto every
+  // member card. Un-flagged notes keep the original cascade-everywhere
+  // behavior.
+  const list = NOTES.filter(n=> n.cardIds.some(id=>{
+    if(!ids.includes(id)) return false;
+    if(n.pageOnly && id !== cardId) return false;
+    return true;
+  }));
   return list.sort((a,b)=>{
     const ra = groupRank(a), rb = groupRank(b);
     if(ra !== rb) return ra - rb; // images first, then keywords, then pinned-first, then everything else
@@ -2079,6 +2110,7 @@ function openModal(noteId){
     document.getElementById('affirmationInput').checked = !!note.isAffirmation;
     document.getElementById('herbInput').checked = !!note.isHerb;
     document.getElementById('situationInput').checked = !!note.isSituation;
+    document.getElementById('cascadeInput').checked = !note.pageOnly;
   } else {
     editor.innerHTML = '';
     selectedTags = currentCardId ? [currentCardId] : [];
@@ -2092,6 +2124,7 @@ function openModal(noteId){
     document.getElementById('affirmationInput').checked = false;
     document.getElementById('herbInput').checked = false;
     document.getElementById('situationInput').checked = false;
+    document.getElementById('cascadeInput').checked = true;
   }
   renderChips();
   tagInput.value = '';
@@ -2125,6 +2158,7 @@ function renderChips(){
     chipsEl.appendChild(chip);
   });
   updatePersonalityCheckboxVisibility();
+  updateCascadeCheckboxVisibility();
 }
 // Personality only makes sense for court cards, so its checkbox only
 // appears once the note is tagged to at least one — an individual court
@@ -2136,6 +2170,20 @@ function updatePersonalityCheckboxVisibility(){
   const show = tagsIncludeCourtCard(selectedTags);
   label.style.display = show ? 'flex' : 'none';
   if(!show) document.getElementById('personalityInput').checked = false;
+}
+// The cascade checkbox only makes sense once a group-type tag is selected
+// (a suit, Court Cards, a court rank, Minor Arcana Pips, or a pip rank) —
+// tagging only to individual cards has nothing to cascade from. If the tags
+// change so no group tag remains, reset it back to checked (the default,
+// cascade-everywhere behavior) rather than leaving a stale unchecked state
+// hidden from view.
+function updateCascadeCheckboxVisibility(){
+  const label = document.getElementById('cascadeLabel');
+  const hint = document.getElementById('cascadeHint');
+  const show = tagsIncludeGroupTag(selectedTags);
+  label.style.display = show ? 'flex' : 'none';
+  hint.style.display = show ? 'block' : 'none';
+  if(!show) document.getElementById('cascadeInput').checked = true;
 }
 
 tagInput.addEventListener('input', ()=>{
@@ -2372,6 +2420,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   const isAffirmation = document.getElementById('affirmationInput').checked;
   const isHerb = document.getElementById('herbInput').checked;
   const isSituation = document.getElementById('situationInput').checked;
+  const pageOnly = tagsIncludeGroupTag(selectedTags) && !document.getElementById('cascadeInput').checked;
   if(editingNoteId){
     const note = NOTES.find(n=>n.id===editingNoteId);
     note.html = html;
@@ -2386,6 +2435,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
     note.isAffirmation = isAffirmation;
     note.isHerb = isHerb;
     note.isSituation = isSituation;
+    note.pageOnly = pageOnly;
     if(orderVal !== '') note.order = Number(orderVal);
   } else {
     NOTES.push({
@@ -2393,7 +2443,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
       cardIds:[...selectedTags], html,
       createdAt: Date.now(), updatedAt: Date.now(),
       order: orderVal !== '' ? Number(orderVal) : Date.now(),
-      isKeywords, isPersonality, isPrismaVisions, isGuidance, isAffirmation, isHerb, isSituation, source, sourceLink
+      isKeywords, isPersonality, isPrismaVisions, isGuidance, isAffirmation, isHerb, isSituation, pageOnly, source, sourceLink
     });
   }
   await persistNotes();
