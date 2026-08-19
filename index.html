@@ -507,6 +507,17 @@ input[type=file]{ display:none; }
     <div class="entries" id="astrologyList"></div>
   </div>
 
+  <div id="keywordsEntryView" style="display:none;">
+    <span class="back-link" id="keywordsEntryBackLink">← all cards</span>
+    <div class="page-header">
+      <div class="page-title-block">
+        <div class="eyebrow">All 78 cards · saves as a real Keywords note per card, stays after this page is gone</div>
+        <div class="page-title">Keywords (temp entry)</div>
+      </div>
+    </div>
+    <div class="entries" id="keywordsEntryList"></div>
+  </div>
+
   <div id="bulkImportView" style="display:none;">
     <span class="back-link" id="bulkImportBackLink">← all cards</span>
     <div class="page-header">
@@ -548,6 +559,7 @@ input[type=file]{ display:none; }
   <span class="back-link" id="noteSearchLink" style="cursor:pointer; margin-bottom:0;">Search Notes</span>
   <span class="back-link" id="sourcesLink" style="cursor:pointer; margin-bottom:0;">Sources</span>
   <span class="back-link" id="astrologyLink" style="cursor:pointer; margin-bottom:0;">Astrology</span>
+  <span class="back-link" id="keywordsEntryLink" style="cursor:pointer; margin-bottom:0;">Keywords (temp)</span>
   <span class="back-link" id="bulkImportLink" style="cursor:pointer; margin-bottom:0;">Bulk Import</span>
 </footer>
 
@@ -1461,6 +1473,7 @@ function showHome(push=true){
   document.getElementById('noteSearchView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
   homeView.style.display = 'block';
   renderHome();
@@ -1472,6 +1485,7 @@ function showCard(cardId, push=true){
   document.getElementById('noteSearchView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
   cardView.style.display = 'block';
   renderCard(cardId);
@@ -1483,6 +1497,7 @@ function showSources(push=true){
   cardView.style.display = 'none';
   document.getElementById('noteSearchView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'block';
   renderSources();
@@ -1494,10 +1509,23 @@ function showAstrology(push=true){
   cardView.style.display = 'none';
   document.getElementById('noteSearchView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
+  document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'block';
   renderAstrology();
   if(push) history.pushState({view:'astrology'}, '', '#astrology');
+}
+function showKeywordsEntry(push=true){
+  currentCardId = null;
+  homeView.style.display = 'none';
+  cardView.style.display = 'none';
+  document.getElementById('noteSearchView').style.display = 'none';
+  document.getElementById('sourcesView').style.display = 'none';
+  document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('bulkImportView').style.display = 'none';
+  document.getElementById('keywordsEntryView').style.display = 'block';
+  renderKeywordsEntry();
+  if(push) history.pushState({view:'keywordsEntry'}, '', '#keywords-entry');
 }
 function showBulkImport(push=true){
   currentCardId = null;
@@ -1506,6 +1534,7 @@ function showBulkImport(push=true){
   document.getElementById('noteSearchView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'block';
   if(push) history.pushState({view:'bulkImport'}, '', '#bulk-import');
 }
@@ -1515,6 +1544,7 @@ function showNoteSearch(push=true){
   cardView.style.display = 'none';
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
   document.getElementById('noteSearchView').style.display = 'block';
   renderNoteSearchResults(document.getElementById('noteSearchInput').value);
@@ -1530,6 +1560,8 @@ window.addEventListener('popstate', (e)=>{
     showSources(false);
   } else if(state && state.view==='astrology'){
     showAstrology(false);
+  } else if(state && state.view==='keywordsEntry'){
+    showKeywordsEntry(false);
   } else if(state && state.view==='bulkImport'){
     showBulkImport(false);
   } else if(state && state.view==='noteSearch'){
@@ -1543,10 +1575,12 @@ document.getElementById('noteSearchBackLink').onclick = ()=> showHome();
 document.getElementById('noteSearchInput').addEventListener('input', e=> renderNoteSearchResults(e.target.value));
 document.getElementById('sourcesLink').onclick = ()=> showSources();
 document.getElementById('astrologyLink').onclick = ()=> showAstrology();
+document.getElementById('keywordsEntryLink').onclick = ()=> showKeywordsEntry();
 document.getElementById('bulkImportLink').onclick = ()=> showBulkImport();
 document.getElementById('brandLink').onclick = ()=> showHome();
 document.getElementById('sourcesBackLink').onclick = ()=> showHome();
 document.getElementById('astrologyBackLink').onclick = ()=> showHome();
+document.getElementById('keywordsEntryBackLink').onclick = ()=> showHome();
 document.getElementById('bulkImportBackLink').onclick = ()=> showHome();
 document.getElementById('deletePageBtn').onclick = ()=>{
   if(!currentCardId) return;
@@ -1775,6 +1809,83 @@ function renderAstrology(){
   list.querySelectorAll('.astro-editor-input').forEach(inp=>{
     inp.addEventListener('blur', ()=> saveCardField(inp.dataset.card, 'astro', inp.value));
   });
+}
+// ---------- temporary Keywords bulk-entry page ----------
+// Looks like the Astrology grid (one row per card, type and it saves on
+// blur), but unlike Astrology — which writes to CARD_FIELDS, a page-only
+// data store — this writes real Notes with isKeywords:true, tagged
+// directly to that one card. That's the whole point: once Camila's gone
+// through the deck, this page (and this whole section of code) can be
+// deleted, and every Keywords note she made stays exactly where it is,
+// showing on its card like any other note, synced and tombstone-safe like
+// any other note. Nothing about a note created here is distinguishable
+// from one created through the normal "+ New note" editor.
+function stripHtmlToText(html){
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html || '';
+  return (tmp.textContent || '').trim();
+}
+// A card can only have one row on this page, so if more than one direct
+// (non-cascaded) Keywords note somehow exists for a card, we edit the most
+// recently updated one here and leave the rest untouched — open the card's
+// own page to manage duplicates by hand.
+function findDirectKeywordsNote(cardId){
+  const matches = NOTES.filter(n => n.isKeywords && n.cardIds.includes(cardId));
+  if(matches.length === 0) return null;
+  return matches.sort((a,b)=> (b.updatedAt||0) - (a.updatedAt||0))[0];
+}
+function renderKeywordsEntry(){
+  updateNoteCount();
+  const list = document.getElementById('keywordsEntryList');
+  list.innerHTML = '';
+  CARDS.forEach(card=>{
+    const el = document.createElement('div');
+    el.className = 'entry';
+    const existing = findDirectKeywordsNote(card.id);
+    const current = existing ? stripHtmlToText(existing.html) : '';
+    el.innerHTML = `<div class="entry-body" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+        <span class="eyebrow-link keywords-entry-card-link" data-goto="${card.id}" style="font-weight:600; font-size:16px;">${escapeHtml(card.name)}</span>
+        <input type="text" class="tag-input keywords-entry-input" data-card="${card.id}" data-note-id="${existing ? existing.id : ''}" value="${escapeHtml(current)}" placeholder="keywords…" style="max-width:280px; flex:1; min-width:200px;"/>
+      </div>`;
+    list.appendChild(el);
+  });
+  list.querySelectorAll('.keywords-entry-card-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
+  list.querySelectorAll('.keywords-entry-input').forEach(inp=>{
+    inp.addEventListener('blur', ()=> saveKeywordsEntryNote(inp));
+  });
+}
+async function saveKeywordsEntryNote(inp){
+  const cardId = inp.dataset.card;
+  const value = inp.value.trim();
+  const noteId = inp.dataset.noteId;
+  if(!value){
+    // Deliberately not auto-deleting on clear — too easy to lose a note to
+    // an accidental blur. To remove one, open the card's own page and
+    // delete it from there.
+    return;
+  }
+  const html = `<div>${escapeHtml(value)}</div>`;
+  if(noteId){
+    const note = NOTES.find(n=>n.id===noteId);
+    if(note){
+      note.html = html;
+      note.updatedAt = Date.now();
+    }
+  } else {
+    const newNote = {
+      id: 'n'+Date.now()+'-'+Math.random().toString(36).slice(2,7),
+      cardIds: [cardId],
+      html,
+      createdAt: Date.now(), updatedAt: Date.now(),
+      order: Date.now(),
+      isKeywords: true, isPersonality:false, isPrismaVisions:false, isGuidance:false,
+      isAffirmation:false, isHerb:false, isSituation:false,
+      source:'', sourceLink:''
+    };
+    NOTES.push(newNote);
+    inp.dataset.noteId = newNote.id;
+  }
+  await persistNotes();
 }
 // ---------- temporary bulk-import tool ----------
 let bulkParsedSections = [];
@@ -2493,6 +2604,9 @@ function bootstrapRoute(){
   } else if(hash === 'astrology'){
     showAstrology(false);
     history.replaceState({view:'astrology'}, '', '#astrology');
+  } else if(hash === 'keywords-entry'){
+    showKeywordsEntry(false);
+    history.replaceState({view:'keywordsEntry'}, '', '#keywords-entry');
   } else if(hash === 'bulk-import'){
     showBulkImport(false);
     history.replaceState({view:'bulkImport'}, '', '#bulk-import');
