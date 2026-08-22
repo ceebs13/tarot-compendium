@@ -257,6 +257,8 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.is-herb{ border-left-color: var(--herb); }
 .entry.is-numerology{ border-left-color: var(--teal); }
 .entry.is-situation{ border-left-color: var(--rust); }
+.entry.keywords-entry-filled{ background: rgba(111,125,94,0.16); border-left-color: var(--sage); }
+.entry.keywords-entry-empty{ opacity:0.7; }
 .entry.is-situation summary{
   cursor:pointer; list-style:none; color: var(--rust);
   font-family:'Raleway', sans-serif;
@@ -542,9 +544,15 @@ input[type=file]{ display:none; }
           <option value="isSituation">Situations</option>
         </select>
       </div>
+      <div class="bulk-field" id="bulkCascadeField" style="display:none;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-family:'Source Serif 4',serif; font-size:14px; color:#3a3226;">
+          <input type="checkbox" id="bulkCascadeInput" checked style="width:auto;"/> Cascade suit/court/pip pages onto their individual cards too
+        </label>
+        <div style="font-size:12px; color:#8a7f6e; margin-top:2px;">This batch includes at least one suit/Court Cards/Pips-type page. Checked (default): notes on those pages also appear on every card underneath, same as tagging them by hand would. Unchecked: they stay only on that page. Doesn't affect notes tagged straight to an individual card.</div>
+      </div>
       <div class="bulk-field">
-        <label for="bulkPasteArea">Paste your text — each card's name on its own line, followed by its note text</label>
-        <textarea id="bulkPasteArea" rows="14" style="font-family:'JetBrains Mono',monospace; font-size:13px;" placeholder="The Fool&#10;Whatever your notes say about The Fool, on one or several lines...&#10;&#10;The Magician&#10;Whatever your notes say about The Magician...&#10;&#10;(and so on, for as many cards as you're pasting in this batch)"></textarea>
+        <label for="bulkPasteArea">Paste your text — each card or page name on its own line, followed by its note text</label>
+        <textarea id="bulkPasteArea" rows="14" style="font-family:'JetBrains Mono',monospace; font-size:13px;" placeholder="The Fool&#10;Whatever your notes say about The Fool, on one or several lines...&#10;&#10;Wands&#10;Notes for the Wands suit-wide page...&#10;&#10;The Magician&#10;Whatever your notes say about The Magician...&#10;&#10;(and so on — any card name, or any page name like a suit, Court Cards (all suits), Minor Arcana Pips, a rank tag, or a custom page)"></textarea>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn primary" id="bulkPreviewBtn">Preview</button>
@@ -1854,7 +1862,7 @@ function renderKeywordsEntry(){
   CARDS.forEach(card=>{
     const existing = findDirectKeywordsNote(card.id);
     const el = document.createElement('div');
-    el.className = 'entry';
+    el.className = 'entry ' + (existing ? 'keywords-entry-filled' : 'keywords-entry-empty');
     el.innerHTML = `<div class="entry-meta">
         <span class="eyebrow-link keywords-entry-card-link" data-goto="${card.id}" style="font-weight:600; font-size:16px;">${escapeHtml(card.name)}</span>
         <span class="entry-actions"><span data-act="${existing ? 'edit' : 'add'}">${existing ? '✎ edit' : '+ add keywords'}</span></span>
@@ -1870,15 +1878,20 @@ function renderKeywordsEntry(){
 // ---------- temporary bulk-import tool ----------
 let bulkParsedSections = [];
 function parseBulkImport(text){
-  const cardsByName = new Map(CARDS.map(c=>[c.name.toLowerCase(), c]));
+  // Recognizes ANY taggable page by name — the 78 individual cards, plus
+  // the suit tags, Court Cards, Minor Arcana Pips, the individual rank tags
+  // (e.g. "Queen (all suits)"), and any custom page under General & Themes.
+  // Comes straight from allPages() so this list never drifts out of sync
+  // with what's actually taggable elsewhere in the app.
+  const pagesByName = new Map(allPages().map(c=>[c.name.toLowerCase(), c]));
   const lines = text.split(/\r?\n/);
   const sections = [];
   let current = null;
   lines.forEach(line=>{
     const trimmed = line.trim();
-    const matchedCard = cardsByName.get(trimmed.toLowerCase());
-    if(matchedCard){
-      current = { card: matchedCard, lines: [] };
+    const matchedPage = pagesByName.get(trimmed.toLowerCase());
+    if(matchedPage){
+      current = { card: matchedPage, lines: [] };
       sections.push(current);
     } else if(current){
       current.lines.push(line);
@@ -1894,21 +1907,23 @@ function renderBulkPreview(){
   const list = document.getElementById('bulkPreviewList');
   list.innerHTML = '';
   if(bulkParsedSections.length === 0){
-    list.innerHTML = `<div class="empty-state">No cards recognized yet. Check that each card's name is on its own line, spelled exactly as it appears elsewhere in the app (e.g. "Three of Wands", not "3 of Wands").</div>`;
+    list.innerHTML = `<div class="empty-state">No cards or pages recognized yet. Check that each name is on its own line, spelled exactly as it appears elsewhere in the app (e.g. "Three of Wands", not "3 of Wands"; "Wands", not "Wands (all cards)").</div>`;
     document.getElementById('bulkImportBtn').style.display = 'none';
+    document.getElementById('bulkCascadeField').style.display = 'none';
     return;
   }
   const foundIds = new Set(bulkParsedSections.map(s=>s.card.id));
   const missing = CARDS.filter(c=>!foundIds.has(c.id));
   const summary = document.createElement('div');
   summary.className = 'entry';
-  summary.innerHTML = `<div class="entry-body" style="font-weight:600;">${bulkParsedSections.length} card${bulkParsedSections.length===1?'':'s'} recognized${missing.length ? `, ${missing.length} not found in this paste` : ' — all 78!'}</div>`;
+  summary.innerHTML = `<div class="entry-body" style="font-weight:600;">${bulkParsedSections.length} card${bulkParsedSections.length===1?'':'s'}/page${bulkParsedSections.length===1?'':'s'} recognized${missing.length ? `, ${missing.length} card${missing.length===1?'':'s'} not found in this paste` : ' — all 78 cards!'}</div>`;
   list.appendChild(summary);
   bulkParsedSections.forEach(s=>{
     const el = document.createElement('div');
     el.className = 'entry bulk-preview-item';
     const snippet = s.text.length > 90 ? s.text.slice(0,90)+'…' : s.text;
-    el.innerHTML = `<span style="font-weight:600;">${escapeHtml(s.card.name)}</span><span style="opacity:0.7; font-size:13px;">${escapeHtml(snippet)}</span>`;
+    const pageTag = !CARDS.includes(s.card) ? ' <span style="opacity:0.55; font-weight:400;">(page)</span>' : '';
+    el.innerHTML = `<span style="font-weight:600;">${escapeHtml(s.card.name)}${pageTag}</span><span style="opacity:0.7; font-size:13px;">${escapeHtml(snippet)}</span>`;
     list.appendChild(el);
   });
   if(missing.length){
@@ -1918,6 +1933,12 @@ function renderBulkPreview(){
     list.appendChild(missingEl);
   }
   document.getElementById('bulkImportBtn').style.display = 'inline-block';
+  // The cascade choice only matters if at least one matched section is a
+  // suit/court/pip-type page — plain individual cards and custom pages
+  // don't cascade regardless, so no point showing it for a batch that's
+  // entirely those.
+  const anyCascadable = bulkParsedSections.some(s => tagsIncludeGroupTag([s.card.id]));
+  document.getElementById('bulkCascadeField').style.display = anyCascadable ? 'block' : 'none';
 }
 async function commitBulkImport(){
   if(bulkParsedSections.length === 0) return;
@@ -1925,15 +1946,17 @@ async function commitBulkImport(){
   const bulkType = document.getElementById('bulkTypeInput').value; // '' or one of isKeywords/isGuidance/isAffirmation/isHerb/isSituation
   const typeFlags = { isKeywords:false, isPrismaVisions:false, isGuidance:false, isAffirmation:false, isHerb:false, isSituation:false };
   if(bulkType) typeFlags[bulkType] = true;
-  if(!confirm(`Create ${bulkParsedSections.length} new notes, one per card, sourced to "${source}"?`)) return;
+  const cascadeChecked = document.getElementById('bulkCascadeInput').checked;
+  if(!confirm(`Create ${bulkParsedSections.length} new notes, one per card/page, sourced to "${source}"?`)) return;
   bulkParsedSections.forEach((s, i)=>{
+    const pageOnly = tagsIncludeGroupTag([s.card.id]) && !cascadeChecked;
     NOTES.push({
       id: 'n'+Date.now()+'-'+i+'-'+Math.random().toString(36).slice(2,7),
       cardIds: [s.card.id],
       html: '<p>' + escapeHtml(s.text).replace(/\n/g,'<br>') + '</p>',
       createdAt: Date.now(), updatedAt: Date.now(),
       order: Date.now() + i,
-      ...typeFlags,
+      ...typeFlags, pageOnly,
       source, sourceLink:''
     });
   });
@@ -1943,6 +1966,7 @@ async function commitBulkImport(){
   bulkParsedSections = [];
   document.getElementById('bulkPreviewList').innerHTML = '';
   document.getElementById('bulkImportBtn').style.display = 'none';
+  document.getElementById('bulkCascadeField').style.display = 'none';
 }
 document.getElementById('bulkPreviewBtn').onclick = renderBulkPreview;
 document.getElementById('bulkImportBtn').onclick = commitBulkImport;
