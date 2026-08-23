@@ -551,7 +551,7 @@ input[type=file]{ display:none; }
         <div style="font-size:12px; color:#8a7f6e; margin-top:2px;">This batch includes at least one suit/Court Cards/Pips-type page. Checked (default): notes on those pages also appear on every card underneath, same as tagging them by hand would. Unchecked: they stay only on that page. Doesn't affect notes tagged straight to an individual card.</div>
       </div>
       <div class="bulk-field">
-        <label for="bulkPasteArea">Paste your text — each card or page name on its own line, followed by its note text</label>
+        <label for="bulkPasteArea">Paste your text — each card or page name on its own line, followed by its note text. Wrap anything in &lt;b&gt;&lt;/b&gt; to make it bold.</label>
         <textarea id="bulkPasteArea" rows="14" style="font-family:'JetBrains Mono',monospace; font-size:13px;" placeholder="The Fool&#10;Whatever your notes say about The Fool, on one or several lines...&#10;&#10;Wands&#10;Notes for the Wands suit-wide page...&#10;&#10;The Magician&#10;Whatever your notes say about The Magician...&#10;&#10;(and so on — any card name, or any page name like a suit, Court Cards (all suits), Minor Arcana Pips, a rank tag, or a custom page)"></textarea>
       </div>
       <div style="display:flex; gap:10px;">
@@ -561,6 +561,46 @@ input[type=file]{ display:none; }
     </div>
     <div class="entries" id="bulkPreviewList"></div>
   </div>
+
+  <div id="noteFinderView" style="display:none;">
+    <span class="back-link" id="noteFinderBackLink">← all cards</span>
+    <div class="page-header">
+      <div class="page-title-block">
+        <div class="eyebrow">Search across all 78 cards by note type and/or source, cascades included</div>
+        <div class="page-title">Note Finder</div>
+      </div>
+    </div>
+    <div class="bulk-form">
+      <div class="bulk-field">
+        <label for="noteFinderTypeInput">Note type</label>
+        <select id="noteFinderTypeInput">
+          <option value="">Any type</option>
+          <option value="regular">Regular (no type)</option>
+          <option value="isKeywords">Keywords</option>
+          <option value="isPersonality">Personality</option>
+          <option value="isPrismaVisions">Prisma Visions</option>
+          <option value="isGuidance">Guidance</option>
+          <option value="isAffirmation">Affirmation</option>
+          <option value="isHerb">Herb</option>
+          <option value="isSituation">Situations</option>
+        </select>
+      </div>
+      <div class="bulk-field">
+        <label for="noteFinderSourceInput">Source contains (leave blank to ignore source)</label>
+        <input type="text" id="noteFinderSourceInput" placeholder="e.g. Labyrinthos App"/>
+      </div>
+      <div class="bulk-field">
+        <label style="display:flex; align-items:center; gap:16px; font-family:'Source Serif 4',serif; font-size:14px; color:#3a3226;">
+          <span style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="radio" name="noteFinderMode" value="has" checked style="width:auto;"/> Has a matching note</span>
+          <span style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="radio" name="noteFinderMode" value="hasnt" style="width:auto;"/> Doesn't have one</span>
+        </label>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn primary" id="noteFinderSearchBtn">Search</button>
+      </div>
+    </div>
+    <div class="entries" id="noteFinderResults"></div>
+  </div>
 </main>
 
 <footer class="app-footer">
@@ -569,6 +609,7 @@ input[type=file]{ display:none; }
   <span class="back-link" id="astrologyLink" style="cursor:pointer; margin-bottom:0;">Astrology</span>
   <span class="back-link" id="keywordsEntryLink" style="cursor:pointer; margin-bottom:0;">Keywords (temp)</span>
   <span class="back-link" id="bulkImportLink" style="cursor:pointer; margin-bottom:0;">Bulk Import</span>
+  <span class="back-link" id="noteFinderLink" style="cursor:pointer; margin-bottom:0;">Note Finder</span>
 </footer>
 
 <button class="fab" id="fabAdd">✎ New note</button>
@@ -1485,6 +1526,7 @@ function showHome(push=true){
   document.getElementById('astrologyView').style.display = 'none';
   document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
+  document.getElementById('noteFinderView').style.display = 'none';
   homeView.style.display = 'block';
   renderHome();
   if(push) history.pushState({view:'home'}, '', location.pathname + location.search);
@@ -1498,6 +1540,7 @@ function showCard(cardId, push=true){
   document.getElementById('astrologyView').style.display = 'none';
   document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
+  document.getElementById('noteFinderView').style.display = 'none';
   cardView.style.display = 'block';
   renderCard(cardId);
   if(push) history.pushState({view:'card', cardId}, '', '#'+encodeURIComponent(cardId));
@@ -1511,6 +1554,7 @@ function showSources(push=true){
   document.getElementById('astrologyView').style.display = 'none';
   document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
+  document.getElementById('noteFinderView').style.display = 'none';
   document.getElementById('sourcesView').style.display = 'block';
   renderSources();
   if(push) history.pushState({view:'sources'}, '', '#sources');
@@ -1524,6 +1568,7 @@ function showAstrology(push=true){
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
+  document.getElementById('noteFinderView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'block';
   renderAstrology();
   if(push) history.pushState({view:'astrology'}, '', '#astrology');
@@ -1537,6 +1582,7 @@ function showKeywordsEntry(push=true){
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
+  document.getElementById('noteFinderView').style.display = 'none';
   document.getElementById('keywordsEntryView').style.display = 'block';
   renderKeywordsEntry();
   if(push) history.pushState({view:'keywordsEntry'}, '', '#keywords-entry');
@@ -1550,8 +1596,23 @@ function showBulkImport(push=true){
   document.getElementById('sourcesView').style.display = 'none';
   document.getElementById('astrologyView').style.display = 'none';
   document.getElementById('keywordsEntryView').style.display = 'none';
+  document.getElementById('noteFinderView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'block';
   if(push) history.pushState({view:'bulkImport'}, '', '#bulk-import');
+}
+function showNoteFinder(push=true){
+  currentCardId = null;
+  activeView = 'noteFinder';
+  homeView.style.display = 'none';
+  cardView.style.display = 'none';
+  document.getElementById('noteSearchView').style.display = 'none';
+  document.getElementById('sourcesView').style.display = 'none';
+  document.getElementById('astrologyView').style.display = 'none';
+  document.getElementById('keywordsEntryView').style.display = 'none';
+  document.getElementById('bulkImportView').style.display = 'none';
+  document.getElementById('noteFinderView').style.display = 'block';
+  renderNoteFinderResults();
+  if(push) history.pushState({view:'noteFinder'}, '', '#note-finder');
 }
 function showNoteSearch(push=true){
   currentCardId = null;
@@ -1562,6 +1623,7 @@ function showNoteSearch(push=true){
   document.getElementById('astrologyView').style.display = 'none';
   document.getElementById('keywordsEntryView').style.display = 'none';
   document.getElementById('bulkImportView').style.display = 'none';
+  document.getElementById('noteFinderView').style.display = 'none';
   document.getElementById('noteSearchView').style.display = 'block';
   renderNoteSearchResults(document.getElementById('noteSearchInput').value);
   if(push) history.pushState({view:'noteSearch'}, '', '#search-notes');
@@ -1580,6 +1642,8 @@ window.addEventListener('popstate', (e)=>{
     showKeywordsEntry(false);
   } else if(state && state.view==='bulkImport'){
     showBulkImport(false);
+  } else if(state && state.view==='noteFinder'){
+    showNoteFinder(false);
   } else if(state && state.view==='noteSearch'){
     showNoteSearch(false);
   } else {
@@ -1593,11 +1657,13 @@ document.getElementById('sourcesLink').onclick = ()=> showSources();
 document.getElementById('astrologyLink').onclick = ()=> showAstrology();
 document.getElementById('keywordsEntryLink').onclick = ()=> showKeywordsEntry();
 document.getElementById('bulkImportLink').onclick = ()=> showBulkImport();
+document.getElementById('noteFinderLink').onclick = ()=> showNoteFinder();
 document.getElementById('brandLink').onclick = ()=> showHome();
 document.getElementById('sourcesBackLink').onclick = ()=> showHome();
 document.getElementById('astrologyBackLink').onclick = ()=> showHome();
 document.getElementById('keywordsEntryBackLink').onclick = ()=> showHome();
 document.getElementById('bulkImportBackLink').onclick = ()=> showHome();
+document.getElementById('noteFinderBackLink').onclick = ()=> showHome();
 document.getElementById('deletePageBtn').onclick = ()=>{
   if(!currentCardId) return;
   const page = CUSTOM_PAGES.find(p=>p.id===currentCardId);
@@ -1875,8 +1941,62 @@ function renderKeywordsEntry(){
   list.querySelectorAll('.keywords-entry-card-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
   resolveImagesIn(list);
 }
+// ---------- Note Finder ----------
+// Answers the "which cards do/don't have a note of type X and/or source Y"
+// questions that used to mean uploading the Dropbox export and asking
+// Claude. Reuses notesForCard() — the exact same function every card page
+// renders from — so results automatically respect cascading suit/court/pip
+// tags and pageOnly, with zero risk of drifting out of sync with how the
+// rest of the app decides what counts as "on" a card.
+function isRegularNoteType(note){
+  return !(note.isKeywords || note.isPersonality || note.isPrismaVisions || note.isGuidance || note.isAffirmation || note.isHerb || note.isSituation);
+}
+function noteFinderTypeMatch(note, type){
+  if(!type) return true;
+  if(type === 'regular') return isRegularNoteType(note);
+  return !!note[type];
+}
+function renderNoteFinderResults(){
+  const type = document.getElementById('noteFinderTypeInput').value;
+  const sourceQuery = document.getElementById('noteFinderSourceInput').value.trim().toLowerCase();
+  const mode = document.querySelector('input[name="noteFinderMode"]:checked').value;
+  const matching = [];
+  CARDS.forEach(card=>{
+    const cnotes = notesForCard(card.id);
+    const hit = cnotes.some(n =>
+      noteFinderTypeMatch(n, type) &&
+      (!sourceQuery || (n.source||'').toLowerCase().includes(sourceQuery))
+    );
+    if((mode==='has' && hit) || (mode==='hasnt' && !hit)) matching.push(card);
+  });
+  const list = document.getElementById('noteFinderResults');
+  list.innerHTML = '';
+  const summary = document.createElement('div');
+  summary.className = 'entry';
+  summary.innerHTML = `<div class="entry-body" style="font-weight:600;">${matching.length} of ${CARDS.length} cards ${mode==='has' ? 'have' : "don't have"} a matching note</div>`;
+  list.appendChild(summary);
+  matching.forEach(card=>{
+    const el = document.createElement('div');
+    el.className = 'entry';
+    el.innerHTML = `<div class="entry-body"><span class="eyebrow-link note-finder-card-link" data-goto="${card.id}" style="font-weight:600;">${escapeHtml(card.name)}</span></div>`;
+    list.appendChild(el);
+  });
+  list.querySelectorAll('.note-finder-card-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
+}
+document.getElementById('noteFinderSearchBtn').onclick = renderNoteFinderResults;
 // ---------- temporary bulk-import tool ----------
 let bulkParsedSections = [];
+// Bulk Import escapes everything by default (so pasted text can't inject
+// arbitrary HTML) — but <b> and </b> specifically are let through after
+// escaping, so pasting text with bold tags already in it renders as bold
+// rather than showing the literal tags. Nothing else gets this treatment;
+// if more inline formatting is wanted here later, extend the two replace()
+// calls rather than switching to a permissive parser.
+function escapeAllowBold(text){
+  return escapeHtml(text)
+    .replace(/&lt;b&gt;/gi, '<b>')
+    .replace(/&lt;\/b&gt;/gi, '</b>');
+}
 function parseBulkImport(text){
   // Recognizes ANY taggable page by name — the 78 individual cards, plus
   // the suit tags, Court Cards, Minor Arcana Pips, the individual rank tags
@@ -1953,7 +2073,7 @@ async function commitBulkImport(){
     NOTES.push({
       id: 'n'+Date.now()+'-'+i+'-'+Math.random().toString(36).slice(2,7),
       cardIds: [s.card.id],
-      html: '<p>' + escapeHtml(s.text).replace(/\n/g,'<br>') + '</p>',
+      html: '<p>' + escapeAllowBold(s.text).replace(/\n/g,'<br>') + '</p>',
       createdAt: Date.now(), updatedAt: Date.now(),
       order: Date.now() + i,
       ...typeFlags, pageOnly,
@@ -2618,6 +2738,9 @@ function bootstrapRoute(){
   } else if(hash === 'bulk-import'){
     showBulkImport(false);
     history.replaceState({view:'bulkImport'}, '', '#bulk-import');
+  } else if(hash === 'note-finder'){
+    showNoteFinder(false);
+    history.replaceState({view:'noteFinder'}, '', '#note-finder');
   } else if(hash && allPages().some(c=>c.id===hash)){
     showCard(hash, false);
     history.replaceState({view:'card', cardId:hash}, '', location.hash);
