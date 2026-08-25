@@ -440,6 +440,11 @@ input[type=file]{ display:none; }
 </head>
 <body>
 
+<div id="syncFailBanner" style="display:none; position:sticky; top:0; z-index:9999; background:var(--oxblood); color:#f4ece0; padding:10px 16px; font-family:'Source Serif 4',serif; font-size:14px; text-align:center; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap;">
+  <span>⚠ Your last edit is safe on this device, but hasn't reached Dropbox yet — keep this tab open.</span>
+  <button id="syncFailRetryBtn" class="btn ghost small" style="border-color:#f4ece0; color:#f4ece0;">Retry now</button>
+</div>
+
 <div class="topbar">
   <div class="brand" id="brandLink" style="cursor:pointer;"><span class="mark"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M6 32 Q32 12 58 32 Q32 52 6 32 Z" fill="none" stroke="#d4ac5e" stroke-width="3"/><path d="M38 22a11 11 0 1 0 0 20 13.5 13.5 0 0 1 0-20z" fill="#d4ac5e"/></svg></span><span class="txt">My Tarot Compendium</span></div>
   <div class="search-wrap"><input id="searchBox" placeholder="Search cards…"/></div>
@@ -600,6 +605,17 @@ input[type=file]{ display:none; }
       </div>
     </div>
     <div class="entries" id="noteFinderResults"></div>
+
+    <div class="page-header" style="margin-top:36px;">
+      <div class="page-title-block">
+        <div class="eyebrow">Situations only — flags a note where two or more headers (Love, Career, Finances, Feelings, Actions) ended up with the exact same text pasted into them</div>
+        <div class="page-title" style="font-size:20px;">Situation Section Checker</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:10px; margin-bottom:14px;">
+      <button class="btn primary" id="situationCheckBtn">Check now</button>
+    </div>
+    <div class="entries" id="situationCheckResults"></div>
   </div>
 </main>
 
@@ -891,7 +907,6 @@ function disconnectDropbox(){
   localStorage.removeItem('dbx_access_token');
   localStorage.removeItem('dbx_refresh_token');
   localStorage.removeItem('dbx_expires_at');
-  idbSet(LAST_SYNCED_HASH_KEY, null).catch(()=>{});
 }
 async function getValidDropboxToken(){
   const expiresAt = Number(localStorage.getItem('dbx_expires_at')||0);
@@ -1065,36 +1080,30 @@ async function dbxUploadChunked(payload){
   return meta && meta.content_hash;
 }
 
-// Lightweight check for whether the remote data file has changed since we
-// last saved it — a lot cheaper than downloading and parsing the whole
-// thing. Used to skip the full download+merge on routine saves when
-// nothing else has touched Dropbox since our last sync (the common case),
-// while still falling back to a full safe merge whenever something has.
-async function dbxGetMetadata(){
-  const token = await getValidDropboxToken();
-  if(!token) return null;
-  const resp = await fetchWithTimeout('https://api.dropboxapi.com/2/files/get_metadata', {
-    method:'POST',
-    headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'application/json' },
-    body: JSON.stringify({ path: DROPBOX_DATA_PATH })
-  }, 20000);
-  if(resp.status===409) return null; // no file saved yet
-  if(!resp.ok){
-    const text = await resp.text().catch(()=>'');
-    throw new Error('Dropbox metadata check failed: '+resp.status+' — '+text);
-  }
-  const meta = await resp.json();
-  return meta.content_hash || null;
-}
-const LAST_SYNCED_HASH_KEY = "tarot-compendium-last-synced-hash";
-async function getLastSyncedHash(){ try{ return await idbGet(LAST_SYNCED_HASH_KEY); }catch(e){ return null; } }
-async function setLastSyncedHash(hash){ try{ await idbSet(LAST_SYNCED_HASH_KEY, hash); }catch(e){ console.error(e); } }
-
 function setSyncStatus(state, label){
   const el = document.getElementById('syncStatus');
   el.className = 'sync-status ' + state;
   el.innerHTML = `<span class="dot"></span>${label}`;
 }
+// The small status dot above is easy to miss — it's what let the Aug 24
+// sync failures go unnoticed for a day. This banner is the loud version:
+// it stays on screen (not just a toast that vanishes) until a sync
+// actually succeeds, and it keeps retrying on its own every 20 seconds so
+// a moment of good signal on a patchy connection gets the save through
+// without needing a manual click — the button's still there for when
+// waiting isn't an option.
+let syncRetryTimer = null;
+function showSyncFailBanner(){
+  document.getElementById('syncFailBanner').style.display = 'flex';
+  if(!syncRetryTimer){
+    syncRetryTimer = setInterval(()=>{ syncWithDropbox(); }, 20000);
+  }
+}
+function hideSyncFailBanner(){
+  document.getElementById('syncFailBanner').style.display = 'none';
+  if(syncRetryTimer){ clearInterval(syncRetryTimer); syncRetryTimer = null; }
+}
+document.getElementById('syncFailRetryBtn').onclick = ()=> syncWithDropbox();
 function updateDropboxButton(){
   const btn = document.getElementById('dropboxBtn');
   const syncBtn = document.getElementById('syncNowBtn');
@@ -1102,11 +1111,74 @@ function updateDropboxButton(){
   syncBtn.style.display = isDropboxConnected() ? 'inline-block' : 'none';
 }
 
-// Merge two {notes, customPages} sets. Notes/pages present on only one
-// side are kept (union). If the same id exists on both sides, the one
-// with the later updatedAt wins. Deletions don't sync perfectly across
-// devices this way — if you delete something on one device, hit "Sync"
-// on the other before trusting it's gone everywhere.
+// Every save/sync always does the full download → merge → upload cycle.
+// There used to be a "fast path" here that skipped the merge if a
+// lightweight remote fingerprint matched what this browser last saw — but
+// that fingerprint was stored in IndexedDB, which is shared across every
+// tab of the app on this device, not private to one tab. A second tab that
+// had been open since before an edit in another tab would still see a
+// "nothing's changed" match and skip straight to uploading its own stale
+// copy, silently overwriting the newer edit. That's what happened on Aug
+// 24 to four Situations notes and a couple of others. Do not reintroduce
+// any shortcut that skips the merge — always merge, every time, no
+// exceptions, regardless of how slow the connection makes it feel.
+async function syncWithDropbox(){
+  if(!isDropboxConnected()) return;
+  setSyncStatus('busy', 'Syncing…');
+  try{
+    const remote = await withRetry(()=>dbxDownload());
+    const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{},deletedPages:{}});
+    NOTES = merged.notes;
+    CUSTOM_PAGES = merged.customPages;
+    CARD_FIELDS = merged.cardFields;
+    DELETED_NOTES = merged.deletedNotes;
+    DELETED_PAGES = merged.deletedPages;
+    await saveLocalCache();
+    await dbxUploadChunked(merged);
+    await flushPendingImageUploads();
+    setSyncStatus('ok', 'Synced');
+    hideSyncFailBanner();
+  }catch(e){
+    console.error('Sync failed', e);
+    setSyncStatus('error', 'Sync failed — saved locally');
+    showSyncFailBanner();
+  }
+}
+
+// Called after any local change: save the local cache immediately (fast,
+// no network), then reconcile with Dropbox via the same full merge as
+// syncWithDropbox() — see the comment above it for why there's no shortcut
+// here anymore.
+async function persistNotes(){
+  const localOk = await saveLocalCache();
+  if(isDropboxConnected()){
+    setSyncStatus('busy', 'Saving…');
+    try{
+      const remote = await withRetry(()=>dbxDownload());
+      const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{},deletedPages:{}});
+      NOTES = merged.notes;
+      CUSTOM_PAGES = merged.customPages;
+      CARD_FIELDS = merged.cardFields;
+      DELETED_NOTES = merged.deletedNotes;
+      DELETED_PAGES = merged.deletedPages;
+      await saveLocalCache();
+      await dbxUploadChunked(merged);
+      await flushPendingImageUploads();
+      setSyncStatus('ok', 'Synced');
+      hideSyncFailBanner();
+    }catch(e){
+      console.error(e);
+      setSyncStatus('error', 'Sync failed — saved locally');
+      showSyncFailBanner();
+      if(!localOk){
+        alert("Could not save — neither the local cache nor Dropbox could be reached right now.");
+      }
+    }
+  } else if(!localOk){
+    alert("Could not save — your browser blocked local storage, and Dropbox isn't connected.");
+  }
+}
+async function persistCustomPages(){ await persistNotes(); }
 function mergeData(a, b){
   // Deletion tombstones: union of both sides, keeping the later deletedAt
   // if both happen to have recorded the same id (shouldn't normally
@@ -1293,97 +1365,7 @@ async function saveLocalCache(){
 
 // Pull from Dropbox, merge with what's here, save the merged result both
 // places. Call this on load and whenever the person hits "Sync now".
-async function syncWithDropbox(){
-  if(!isDropboxConnected()) return;
-  setSyncStatus('busy', 'Syncing…');
-  try{
-    const lastHash = await getLastSyncedHash();
-    let remoteHash;
-    try{ remoteHash = await dbxGetMetadata(); }
-    catch(e){ remoteHash = undefined; }
 
-    if(remoteHash !== undefined && lastHash && remoteHash === lastHash){
-      // Nothing's changed remotely — just push whatever's here, no need to
-      // download and merge against a copy we already know matches.
-      const payload = {notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES};
-      const newHash = await dbxUploadChunked(payload);
-      await flushPendingImageUploads();
-      if(newHash) await setLastSyncedHash(newHash);
-      setSyncStatus('ok', 'Synced');
-    } else {
-      const remote = await withRetry(()=>dbxDownload());
-      const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{},deletedPages:{}});
-      NOTES = merged.notes;
-      CUSTOM_PAGES = merged.customPages;
-      CARD_FIELDS = merged.cardFields;
-      DELETED_NOTES = merged.deletedNotes;
-      DELETED_PAGES = merged.deletedPages;
-      await saveLocalCache();
-      const newHash = await dbxUploadChunked(merged);
-      await flushPendingImageUploads();
-      if(newHash) await setLastSyncedHash(newHash);
-      setSyncStatus('ok', 'Synced');
-    }
-  }catch(e){
-    console.error('Sync failed', e);
-    setSyncStatus('error', 'Sync failed — saved locally');
-  }
-}
-
-// Called after any local change: save the local cache immediately (fast,
-// no network), then reconcile with Dropbox. Before doing a full
-// download+merge (the safe-but-slower path that stops two tabs/devices
-// from clobbering each other), it first asks Dropbox for a lightweight
-// fingerprint of the remote file. If that fingerprint matches what we saw
-// last time we synced, nothing else has touched Dropbox since — so it's
-// safe to skip straight to uploading, no merge needed. Any mismatch (or
-// the check itself failing) falls back to the full safe download+merge,
-// so the multi-tab protection never actually weakens — it just gets
-// skipped on the routine case where it isn't needed.
-async function persistNotes(){
-  const localOk = await saveLocalCache();
-  if(isDropboxConnected()){
-    setSyncStatus('busy','Saving…');
-    try{
-      const lastHash = await getLastSyncedHash();
-      let remoteHash;
-      try{ remoteHash = await dbxGetMetadata(); }
-      catch(e){ remoteHash = undefined; } // couldn't check — treat as "unknown", go safe
-
-      if(remoteHash !== undefined && lastHash && remoteHash === lastHash){
-        // Fast path: remote hasn't changed since our last sync.
-        const payload = {notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES};
-        const newHash = await dbxUploadChunked(payload);
-        await flushPendingImageUploads();
-        if(newHash) await setLastSyncedHash(newHash);
-        setSyncStatus('ok','Synced');
-      } else {
-        // Safe path: something changed remotely (or we can't be sure) — full merge.
-        const remote = await withRetry(()=>dbxDownload());
-        const merged = mergeData({notes:NOTES, customPages:CUSTOM_PAGES, cardFields:CARD_FIELDS, deletedNotes:DELETED_NOTES, deletedPages:DELETED_PAGES}, remote || {notes:[],customPages:[],cardFields:{},deletedNotes:{},deletedPages:{}});
-        NOTES = merged.notes;
-        CUSTOM_PAGES = merged.customPages;
-        CARD_FIELDS = merged.cardFields;
-        DELETED_NOTES = merged.deletedNotes;
-        DELETED_PAGES = merged.deletedPages;
-        await saveLocalCache();
-        const newHash = await dbxUploadChunked(merged);
-        await flushPendingImageUploads();
-        if(newHash) await setLastSyncedHash(newHash);
-        setSyncStatus('ok','Synced');
-      }
-    }catch(e){
-      console.error(e);
-      setSyncStatus('error','Sync failed — saved locally');
-      if(!localOk){
-        alert("Could not save — neither the local cache nor Dropbox could be reached right now.");
-      }
-    }
-  } else if(!localOk){
-    alert("Could not save — your browser blocked local storage, and Dropbox isn't connected.");
-  }
-}
-async function persistCustomPages(){ await persistNotes(); }
 async function loadNotes(){ await loadLocalCache(); }
 async function loadCustomPages(){ /* handled by loadLocalCache() */ }
 
@@ -1984,6 +1966,86 @@ function renderNoteFinderResults(){
   list.querySelectorAll('.note-finder-card-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
 }
 document.getElementById('noteFinderSearchBtn').onclick = renderNoteFinderResults;
+// ---------- Situation Section Checker ----------
+// Situations notes are written as five sub-sections under headers (Love,
+// Career, Finances, Feelings, Actions) inside one note's html. A copy-paste
+// slip when building one can leave two or more of those headers pointing
+// at identical text instead of their own — first caught by eye on Four of
+// Cups, where all five were the same. This scans every Situations note for
+// that exact pattern. The HTML across these notes isn't consistent (some
+// use <br><br>, some <div>, some <p> — whatever way it was pasted in
+// originally), so this normalizes all three to plain lines before matching
+// header words, rather than assuming one format.
+const SITUATION_HEADER_WORDS = ['love','career','finances','feelings','actions','health','general','spirituality'];
+function extractSituationSections(html){
+  let plain = html;
+  plain = plain.replace(/<br\s*\/?>/gi, '\n');
+  plain = plain.replace(/<\/p>|<\/div>/gi, '\n');
+  plain = plain.replace(/<p>|<div>|<b>|<\/b>/gi, '');
+  plain = plain.replace(/&nbsp;/gi, ' ');
+  plain = plain.replace(/<[^>]+>/g, '');
+  const lines = plain.split('\n').map(l=>l.trim());
+  const sections = {};
+  let current = null;
+  let buf = [];
+  const flush = ()=>{ if(current) sections[current] = buf.filter(Boolean).join(' ').trim(); };
+  lines.forEach(l=>{
+    const key = l.toLowerCase().replace(/:$/,'').trim();
+    if(SITUATION_HEADER_WORDS.includes(key) && l.length < 20){
+      flush();
+      current = key;
+      buf = [];
+    } else if(l.toLowerCase().startsWith('source:')){
+      flush();
+      current = null;
+      buf = [];
+    } else {
+      buf.push(l);
+    }
+  });
+  flush();
+  return sections;
+}
+function findDuplicateSituationSections(){
+  const results = [];
+  NOTES.filter(n=>n.isSituation).forEach(n=>{
+    const sections = extractSituationSections(n.html);
+    const nonEmpty = Object.entries(sections).filter(([k,v]) => v && v.length > 15);
+    if(nonEmpty.length < 2) return;
+    const texts = nonEmpty.map(([k,v])=>v);
+    const uniqueCount = new Set(texts).size;
+    if(uniqueCount < texts.length){
+      n.cardIds.forEach(cid=>{
+        const card = CARDS.find(c=>c.id===cid);
+        if(card) results.push({ card, note: n, total: texts.length, unique: uniqueCount, headers: nonEmpty.map(([k])=>k) });
+      });
+    }
+  });
+  return results;
+}
+function renderSituationCheckResults(){
+  const results = findDuplicateSituationSections();
+  const list = document.getElementById('situationCheckResults');
+  list.innerHTML = '';
+  const summary = document.createElement('div');
+  summary.className = 'entry';
+  summary.innerHTML = `<div class="entry-body" style="font-weight:600;">${results.length ? `${results.length} card${results.length===1?'':'s'} affected` : 'None found — every Situations note has distinct text per header'}</div>`;
+  list.appendChild(summary);
+  results.forEach(r=>{
+    const el = document.createElement('div');
+    el.className = 'entry';
+    const fully = (r.unique === 1);
+    el.innerHTML = `<div class="entry-meta">
+        <span class="eyebrow-link situation-check-card-link" data-goto="${r.card.id}" style="font-weight:600; font-size:16px;">${escapeHtml(r.card.name)}</span>
+        <span class="entry-actions"><span data-act="edit">✎ edit</span></span>
+      </div>
+      <div class="entry-body">${fully ? 'All' : `${r.total - r.unique + 1} of`} ${r.total} headers (${r.headers.join(', ')}) share the same text</div>`;
+    list.appendChild(el);
+    el.querySelector('[data-act="edit"]').onclick = ()=> openModal(r.note.id);
+  });
+  list.querySelectorAll('.situation-check-card-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
+}
+document.getElementById('situationCheckBtn').onclick = renderSituationCheckResults;
 // ---------- temporary bulk-import tool ----------
 let bulkParsedSections = [];
 // Bulk Import escapes everything by default (so pasted text can't inject
@@ -2692,6 +2754,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   closeModal();
   if(currentCardId) renderCard(currentCardId);
   else if(activeView === 'keywordsEntry') renderKeywordsEntry();
+  else if(activeView === 'noteFinder'){ renderNoteFinderResults(); renderSituationCheckResults(); }
   else renderHome(document.getElementById('searchBox').value);
 };
 document.getElementById('deleteNoteBtn').onclick = async ()=>{
@@ -2703,6 +2766,7 @@ document.getElementById('deleteNoteBtn').onclick = async ()=>{
     closeModal();
     if(currentCardId) renderCard(currentCardId);
     else if(activeView === 'keywordsEntry') renderKeywordsEntry();
+    else if(activeView === 'noteFinder'){ renderNoteFinderResults(); renderSituationCheckResults(); }
     else renderHome();
   }
 };
