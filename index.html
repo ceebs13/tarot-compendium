@@ -311,6 +311,13 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry-actions span{ cursor:pointer; opacity:0.6; }
 .entry-actions span:hover{ opacity:1; }
 .entry-body{ font-family:'Raleway', sans-serif; font-size:14px; line-height:1.65; }
+/* Thoth notes: image floats left with text wrapping down its full height,
+   instead of the default inline behavior (text only beside the image's
+   first line) every other note type uses. overflow:auto on the body makes
+   it contain the float, so the card's own border doesn't collapse above
+   a tall image. Scoped to .is-thoth only — no other note type is affected. */
+.entry.is-thoth .entry-body{ overflow:auto; }
+.entry.is-thoth .entry-body img{ float:left; margin:4px 14px 10px 0; }
 .entry-body img{ width:clamp(80px, 22vw, 200px); aspect-ratio: 200/345; height:auto; max-width:100%; object-fit:fill; border-radius:6px; margin:6px 8px 6px 0; vertical-align:top; cursor:zoom-in; }
 .entry-body img[data-remote-id]{ background: rgba(33,26,20,0.08); }
 .editor img[data-remote-id]{ background: rgba(33,26,20,0.08); }
@@ -2134,7 +2141,6 @@ function renderCard(cardId){
     if(note.isGuidance) labels.push('Guidance');
     if(note.isAffirmation) labels.push('Affirmation');
     if(note.isHerb) labels.push('Herb');
-    if(note.isThoth) labels.push('Thoth');
     if(isNumerology) labels.push('Numerology');
     const labelsHtml = labels.map(l=>`<div class="field-label-inline" style="margin-bottom:4px;">${l.toUpperCase()}:</div>`).join('');
     return `<div class="entry-meta">
@@ -2186,7 +2192,7 @@ function renderCard(cardId){
       entries.appendChild(groupEl);
       i = j;
     } else {
-      const el = document.createElement(note.isSituation ? 'details' : 'div');
+      const el = document.createElement((note.isSituation || note.isThoth) ? 'details' : 'div');
       const isNumerology = noteIsNumerology(note);
       el.className = 'entry'
         + (noteHasImage(note) ? ' has-images' : '')
@@ -2204,7 +2210,9 @@ function renderCard(cardId){
       const innerContent = buildNoteInnerHtml(note);
       el.innerHTML = note.isSituation
         ? `<summary class="field-label-inline">SITUATIONS:</summary>${innerContent}`
-        : innerContent;
+        : note.isThoth
+          ? `<summary class="field-label-inline">THOTH NOTES:</summary>${innerContent}`
+          : innerContent;
       entries.appendChild(el);
       wireNoteControls(el, note);
       i++;
