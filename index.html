@@ -272,6 +272,18 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 }
 .entry.is-situation[open] summary::after{ transform: rotate(180deg); }
 .entry.is-situation[open] summary{ margin-bottom:10px; }
+.entry.is-thoth summary{
+  cursor:pointer; list-style:none; color: var(--blue);
+  font-family:'Raleway', sans-serif;
+  font-size:14px;
+  display:flex; align-items:center; gap:8px;
+}
+.entry.is-thoth summary::-webkit-details-marker{ display:none; }
+.entry.is-thoth summary::after{
+  content:'▾'; display:inline-block; transition: transform 0.15s ease;
+}
+.entry.is-thoth[open] summary::after{ transform: rotate(180deg); }
+.entry.is-thoth[open] summary{ margin-bottom:10px; }
 .field-label-inline{ font-weight:700; text-transform:uppercase; }
 .entry.astro-display .field-label-inline{ color: var(--blue); }
 .entry.is-keywords .field-label-inline{ color: var(--oxblood); }
