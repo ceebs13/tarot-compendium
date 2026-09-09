@@ -255,6 +255,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.is-guidance{ border-left-color: var(--violet); }
 .entry.is-affirmation{ border-left-color: var(--rose); }
 .entry.is-herb{ border-left-color: var(--herb); }
+.entry.is-thoth{ border-left-color: var(--blue); }
 .entry.is-numerology{ border-left-color: var(--teal); }
 .entry.is-situation{ border-left-color: var(--rust); }
 .entry.keywords-entry-filled{ background: #d7d3b8; border-left-color: var(--sage); }
@@ -279,6 +280,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.is-guidance .field-label-inline{ color: var(--violet); }
 .entry.is-affirmation .field-label-inline{ color: var(--rose); }
 .entry.is-herb .field-label-inline{ color: var(--herb); }
+.entry.is-thoth .field-label-inline{ color: var(--blue); }
 .entry.is-numerology .field-label-inline{ color: var(--teal); }
 .entry-source{
   margin-top:10px;
@@ -547,6 +549,7 @@ input[type=file]{ display:none; }
           <option value="isAffirmation">Affirmation</option>
           <option value="isHerb">Herb</option>
           <option value="isSituation">Situations</option>
+          <option value="isThoth">Thoth</option>
         </select>
       </div>
       <div class="bulk-field" id="bulkCascadeField" style="display:none;">
@@ -588,6 +591,7 @@ input[type=file]{ display:none; }
           <option value="isAffirmation">Affirmation</option>
           <option value="isHerb">Herb</option>
           <option value="isSituation">Situations</option>
+          <option value="isThoth">Thoth</option>
         </select>
       </div>
       <div class="bulk-field">
@@ -605,17 +609,6 @@ input[type=file]{ display:none; }
       </div>
     </div>
     <div class="entries" id="noteFinderResults"></div>
-
-    <div class="page-header" style="margin-top:36px;">
-      <div class="page-title-block">
-        <div class="eyebrow">Situations only — flags a note where two or more headers (Love, Career, Finances, Feelings, Actions) ended up with the exact same text pasted into them</div>
-        <div class="page-title" style="font-size:20px;">Situation Section Checker</div>
-      </div>
-    </div>
-    <div style="display:flex; gap:10px; margin-bottom:14px;">
-      <button class="btn primary" id="situationCheckBtn">Check now</button>
-    </div>
-    <div class="entries" id="situationCheckResults"></div>
   </div>
 </main>
 
@@ -674,6 +667,9 @@ input[type=file]{ display:none; }
         </label>
         <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
           <input type="checkbox" id="herbInput" style="width:auto;"/> Herb
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
+          <input type="checkbox" id="thothInput" style="width:auto;"/> Thoth
         </label>
         <label style="display:flex; align-items:center; gap:6px; font-family:'Source Serif 4',serif; font-size:14px; cursor:pointer; color:#3a3226;">
           <input type="checkbox" id="situationInput" style="width:auto;"/> Situations
@@ -1442,12 +1438,16 @@ function renderSourceLine(note){
 // Order: images, suit-wide notes, court/numerology notes, astrology
 // (inserted separately at render time — sits right here), keywords,
 // personality, all regular notes, prisma visions, situations, guidance,
-// affirmation, herb. Checked top to bottom in this exact sequence, first
-// match wins. Note: pageOnly (see notesForCard) only affects WHICH pages a
-// note appears on, not its rank once it's decided to show on a given page —
-// a pageOnly suit note still ranks as suit-wide (1) on its own group page.
+// affirmation, herb, Thoth. Checked top to bottom in this exact sequence,
+// first match wins. Note: pageOnly (see notesForCard) only affects WHICH
+// pages a note appears on, not its rank once it's decided to show on a
+// given page — a pageOnly suit note still ranks as suit-wide (1) on its
+// own group page. Thoth is a deliberate exception to the "has an image"
+// rule below: Thoth notes commonly carry an image but are meant to sit at
+// the very bottom regardless, so they're excluded from that top-ranking
+// check specifically rather than just being ranked last among equals.
 function groupRank(note){
-  if(noteHasImage(note)) return 0;
+  if(noteHasImage(note) && !note.isThoth) return 0;
   if(noteIsSuitWide(note)) return 1;
   if(noteIsCourtWide(note) || noteIsNumerology(note)) return 2;
   if(note.isKeywords) return 4;
@@ -1457,6 +1457,7 @@ function groupRank(note){
   if(note.isGuidance) return 9;
   if(note.isAffirmation) return 10;
   if(note.isHerb) return 11;
+  if(note.isThoth) return 12;
   return 6; // regular notes
 }
 function pipNumberFor(note){
@@ -1931,7 +1932,7 @@ function renderKeywordsEntry(){
 // tags and pageOnly, with zero risk of drifting out of sync with how the
 // rest of the app decides what counts as "on" a card.
 function isRegularNoteType(note){
-  return !(note.isKeywords || note.isPersonality || note.isPrismaVisions || note.isGuidance || note.isAffirmation || note.isHerb || note.isSituation);
+  return !(note.isKeywords || note.isPersonality || note.isPrismaVisions || note.isGuidance || note.isAffirmation || note.isHerb || note.isSituation || note.isThoth);
 }
 function noteFinderTypeMatch(note, type){
   if(!type) return true;
@@ -1966,86 +1967,6 @@ function renderNoteFinderResults(){
   list.querySelectorAll('.note-finder-card-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
 }
 document.getElementById('noteFinderSearchBtn').onclick = renderNoteFinderResults;
-// ---------- Situation Section Checker ----------
-// Situations notes are written as five sub-sections under headers (Love,
-// Career, Finances, Feelings, Actions) inside one note's html. A copy-paste
-// slip when building one can leave two or more of those headers pointing
-// at identical text instead of their own — first caught by eye on Four of
-// Cups, where all five were the same. This scans every Situations note for
-// that exact pattern. The HTML across these notes isn't consistent (some
-// use <br><br>, some <div>, some <p> — whatever way it was pasted in
-// originally), so this normalizes all three to plain lines before matching
-// header words, rather than assuming one format.
-const SITUATION_HEADER_WORDS = ['love','career','finances','feelings','actions','health','general','spirituality'];
-function extractSituationSections(html){
-  let plain = html;
-  plain = plain.replace(/<br\s*\/?>/gi, '\n');
-  plain = plain.replace(/<\/p>|<\/div>/gi, '\n');
-  plain = plain.replace(/<p>|<div>|<b>|<\/b>/gi, '');
-  plain = plain.replace(/&nbsp;/gi, ' ');
-  plain = plain.replace(/<[^>]+>/g, '');
-  const lines = plain.split('\n').map(l=>l.trim());
-  const sections = {};
-  let current = null;
-  let buf = [];
-  const flush = ()=>{ if(current) sections[current] = buf.filter(Boolean).join(' ').trim(); };
-  lines.forEach(l=>{
-    const key = l.toLowerCase().replace(/:$/,'').trim();
-    if(SITUATION_HEADER_WORDS.includes(key) && l.length < 20){
-      flush();
-      current = key;
-      buf = [];
-    } else if(l.toLowerCase().startsWith('source:')){
-      flush();
-      current = null;
-      buf = [];
-    } else {
-      buf.push(l);
-    }
-  });
-  flush();
-  return sections;
-}
-function findDuplicateSituationSections(){
-  const results = [];
-  NOTES.filter(n=>n.isSituation).forEach(n=>{
-    const sections = extractSituationSections(n.html);
-    const nonEmpty = Object.entries(sections).filter(([k,v]) => v && v.length > 15);
-    if(nonEmpty.length < 2) return;
-    const texts = nonEmpty.map(([k,v])=>v);
-    const uniqueCount = new Set(texts).size;
-    if(uniqueCount < texts.length){
-      n.cardIds.forEach(cid=>{
-        const card = CARDS.find(c=>c.id===cid);
-        if(card) results.push({ card, note: n, total: texts.length, unique: uniqueCount, headers: nonEmpty.map(([k])=>k) });
-      });
-    }
-  });
-  return results;
-}
-function renderSituationCheckResults(){
-  const results = findDuplicateSituationSections();
-  const list = document.getElementById('situationCheckResults');
-  list.innerHTML = '';
-  const summary = document.createElement('div');
-  summary.className = 'entry';
-  summary.innerHTML = `<div class="entry-body" style="font-weight:600;">${results.length ? `${results.length} card${results.length===1?'':'s'} affected` : 'None found — every Situations note has distinct text per header'}</div>`;
-  list.appendChild(summary);
-  results.forEach(r=>{
-    const el = document.createElement('div');
-    el.className = 'entry';
-    const fully = (r.unique === 1);
-    el.innerHTML = `<div class="entry-meta">
-        <span class="eyebrow-link situation-check-card-link" data-goto="${r.card.id}" style="font-weight:600; font-size:16px;">${escapeHtml(r.card.name)}</span>
-        <span class="entry-actions"><span data-act="edit">✎ edit</span></span>
-      </div>
-      <div class="entry-body">${fully ? 'All' : `${r.total - r.unique + 1} of`} ${r.total} headers (${r.headers.join(', ')}) share the same text</div>`;
-    list.appendChild(el);
-    el.querySelector('[data-act="edit"]').onclick = ()=> openModal(r.note.id);
-  });
-  list.querySelectorAll('.situation-check-card-link').forEach(a=> a.addEventListener('click', ()=> showCard(a.dataset.goto)));
-}
-document.getElementById('situationCheckBtn').onclick = renderSituationCheckResults;
 // ---------- temporary bulk-import tool ----------
 let bulkParsedSections = [];
 // Bulk Import escapes everything by default (so pasted text can't inject
@@ -2125,8 +2046,8 @@ function renderBulkPreview(){
 async function commitBulkImport(){
   if(bulkParsedSections.length === 0) return;
   const source = document.getElementById('bulkSourceInput').value.trim();
-  const bulkType = document.getElementById('bulkTypeInput').value; // '' or one of isKeywords/isGuidance/isAffirmation/isHerb/isSituation
-  const typeFlags = { isKeywords:false, isPrismaVisions:false, isGuidance:false, isAffirmation:false, isHerb:false, isSituation:false };
+  const bulkType = document.getElementById('bulkTypeInput').value; // '' or one of isKeywords/isGuidance/isAffirmation/isHerb/isSituation/isThoth
+  const typeFlags = { isKeywords:false, isPrismaVisions:false, isGuidance:false, isAffirmation:false, isHerb:false, isSituation:false, isThoth:false };
   if(bulkType) typeFlags[bulkType] = true;
   const cascadeChecked = document.getElementById('bulkCascadeInput').checked;
   if(!confirm(`Create ${bulkParsedSections.length} new notes, one per card/page, sourced to "${source}"?`)) return;
@@ -2213,6 +2134,7 @@ function renderCard(cardId){
     if(note.isGuidance) labels.push('Guidance');
     if(note.isAffirmation) labels.push('Affirmation');
     if(note.isHerb) labels.push('Herb');
+    if(note.isThoth) labels.push('Thoth');
     if(isNumerology) labels.push('Numerology');
     const labelsHtml = labels.map(l=>`<div class="field-label-inline" style="margin-bottom:4px;">${l.toUpperCase()}:</div>`).join('');
     return `<div class="entry-meta">
@@ -2276,6 +2198,7 @@ function renderCard(cardId){
         + (note.isGuidance ? ' is-guidance' : '')
         + (note.isAffirmation ? ' is-affirmation' : '')
         + (note.isHerb ? ' is-herb' : '')
+        + (note.isThoth ? ' is-thoth' : '')
         + (note.isSituation ? ' is-situation' : '')
         + (isNumerology ? ' is-numerology' : '');
       const innerContent = buildNoteInnerHtml(note);
@@ -2413,6 +2336,7 @@ function openModal(noteId){
     document.getElementById('guidanceInput').checked = !!note.isGuidance;
     document.getElementById('affirmationInput').checked = !!note.isAffirmation;
     document.getElementById('herbInput').checked = !!note.isHerb;
+    document.getElementById('thothInput').checked = !!note.isThoth;
     document.getElementById('situationInput').checked = !!note.isSituation;
     document.getElementById('cascadeInput').checked = !note.pageOnly;
   } else {
@@ -2427,6 +2351,7 @@ function openModal(noteId){
     document.getElementById('guidanceInput').checked = false;
     document.getElementById('affirmationInput').checked = false;
     document.getElementById('herbInput').checked = false;
+    document.getElementById('thothInput').checked = false;
     document.getElementById('situationInput').checked = false;
     document.getElementById('cascadeInput').checked = true;
   }
@@ -2723,6 +2648,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
   const isGuidance = document.getElementById('guidanceInput').checked;
   const isAffirmation = document.getElementById('affirmationInput').checked;
   const isHerb = document.getElementById('herbInput').checked;
+  const isThoth = document.getElementById('thothInput').checked;
   const isSituation = document.getElementById('situationInput').checked;
   const pageOnly = tagsIncludeGroupTag(selectedTags) && !document.getElementById('cascadeInput').checked;
   if(editingNoteId){
@@ -2738,6 +2664,7 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
     note.isGuidance = isGuidance;
     note.isAffirmation = isAffirmation;
     note.isHerb = isHerb;
+    note.isThoth = isThoth;
     note.isSituation = isSituation;
     note.pageOnly = pageOnly;
     if(orderVal !== '') note.order = Number(orderVal);
@@ -2747,14 +2674,14 @@ document.getElementById('saveNoteBtn').onclick = async ()=>{
       cardIds:[...selectedTags], html,
       createdAt: Date.now(), updatedAt: Date.now(),
       order: orderVal !== '' ? Number(orderVal) : Date.now(),
-      isKeywords, isPersonality, isPrismaVisions, isGuidance, isAffirmation, isHerb, isSituation, pageOnly, source, sourceLink
+      isKeywords, isPersonality, isPrismaVisions, isGuidance, isAffirmation, isHerb, isThoth, isSituation, pageOnly, source, sourceLink
     });
   }
   await persistNotes();
   closeModal();
   if(currentCardId) renderCard(currentCardId);
   else if(activeView === 'keywordsEntry') renderKeywordsEntry();
-  else if(activeView === 'noteFinder'){ renderNoteFinderResults(); renderSituationCheckResults(); }
+  else if(activeView === 'noteFinder') renderNoteFinderResults();
   else renderHome(document.getElementById('searchBox').value);
 };
 document.getElementById('deleteNoteBtn').onclick = async ()=>{
@@ -2766,7 +2693,7 @@ document.getElementById('deleteNoteBtn').onclick = async ()=>{
     closeModal();
     if(currentCardId) renderCard(currentCardId);
     else if(activeView === 'keywordsEntry') renderKeywordsEntry();
-    else if(activeView === 'noteFinder'){ renderNoteFinderResults(); renderSituationCheckResults(); }
+    else if(activeView === 'noteFinder') renderNoteFinderResults();
     else renderHome();
   }
 };
