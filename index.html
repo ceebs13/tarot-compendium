@@ -241,10 +241,10 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   border-left: 4px solid var(--brass);
   transition: opacity .15s ease, border-top-color .1s ease;
 }
-.entry.regular-group{ padding:0; }
-.regular-note-item{ padding:20px 24px; }
-.regular-note-item.regular-note-divider{ border-top:1px solid rgba(33,26,20,0.15); }
-.entry.dragging, .regular-note-item.dragging{ opacity:0.4; }
+.entry.note-group{ padding:0; }
+.note-group-item{ padding:20px 24px; }
+.note-group-item.note-group-divider{ border-top:1px solid rgba(33,26,20,0.15); }
+.entry.dragging, .note-group-item.dragging{ opacity:0.4; }
 .entry.astro-display{ border-left-color: var(--blue); }
 .entry.is-suit-wide{ border-left-color: var(--indigo); }
 .entry.is-court-wide{ border-left-color: var(--plum); }
@@ -310,7 +310,7 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
   font-family:'JetBrains Mono',monospace;
   color: var(--sage);
 }
-.entry.drag-over, .regular-note-item.drag-over{ border-top:3px solid var(--oxblood); }
+.entry.drag-over, .note-group-item.drag-over{ border-top:3px solid var(--oxblood); }
 .drag-handle{ cursor:grab; opacity:0.45; margin-right:8px; letter-spacing:-2px; }
 .drag-handle:hover{ opacity:0.8; }
 .drag-handle:active{ cursor:grabbing; }
@@ -1442,6 +1442,20 @@ function tagsIncludeGroupTag(tagIds){
 function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+// For a Thoth note's collapsed header — pulls the first real word out of
+// its text, skipping the image entirely (so an <img> tag never becomes
+// the "word"), so the header can read "THOTH: WORD" instead of a generic
+// label, letting Camila tell what's inside before expanding it.
+function firstWordOf(html){
+  let text = html.replace(/<img[^>]*>/gi, ' ');
+  text = text.replace(/<br\s*\/?>/gi, ' ').replace(/<\/p>|<\/div>/gi, ' ');
+  text = text.replace(/<[^>]+>/g, ' ');
+  text = text.replace(/&nbsp;/gi, ' ');
+  text = text.trim();
+  const match = text.match(/[A-Za-z0-9''-]+/);
+  if(!match) return '';
+  return match[0].replace(/^['-]+|['-]+$/g, '').toUpperCase();
+}
 function renderSourceLine(note){
   if(note.source && note.sourceLink){
     return `<a href="${escapeHtml(note.sourceLink)}" target="_blank" rel="noopener">${escapeHtml(note.source)}</a>`;
@@ -2180,23 +2194,41 @@ function renderCard(cardId){
 
   let astroInserted = false;
   let i = 0;
+  // Which ranks stack multiple notes into one continuous box (like regular
+  // notes always have) rather than each getting its own separate card.
+  // Keywords/Personality/Prisma Visions/Guidance/Affirmation/Herb/Regular
+  // all qualify — anywhere it's plausible to have more than one note of
+  // that exact type on a page and want them read as one block. Left out on
+  // purpose: has-image (0) and suit/court-wide (1,2) can each bundle notes
+  // of genuinely different underlying types together, so there's no single
+  // accent color to give the merged box; Situations (8) and Thoth (12) use
+  // the collapsible <details> layout instead, which doesn't fit inside a
+  // shared box with other notes.
+  const GROUPABLE_RANKS = new Set([4,5,6,7,9,10,11]);
   while(i < list.length){
     const note = list[i];
     if(!astroInserted && groupRank(note) >= 4){
       insertAstroLine();
       astroInserted = true;
     }
-    if(groupRank(note) === 6){
-      // Regular notes sit together in one continuous box, no gaps between
-      // them — gather every consecutive regular note into a single group.
+    const rank = groupRank(note);
+    if(GROUPABLE_RANKS.has(rank)){
+      // Gather every consecutive note sharing this exact rank into one box.
       const group = [note];
       let j = i+1;
-      while(j < list.length && groupRank(list[j]) === 6){ group.push(list[j]); j++; }
+      while(j < list.length && groupRank(list[j]) === rank){ group.push(list[j]); j++; }
       const groupEl = document.createElement('div');
-      groupEl.className = 'entry regular-group';
+      const accentClass = rank===6 ? '' :
+        note.isKeywords ? ' is-keywords' :
+        note.isPersonality ? ' is-personality' :
+        note.isPrismaVisions ? ' is-prisma-visions' :
+        note.isGuidance ? ' is-guidance' :
+        note.isAffirmation ? ' is-affirmation' :
+        note.isHerb ? ' is-herb' : '';
+      groupEl.className = 'entry note-group' + accentClass;
       group.forEach((n, idx)=>{
         const itemEl = document.createElement('div');
-        itemEl.className = 'regular-note-item' + (idx>0 ? ' regular-note-divider' : '');
+        itemEl.className = 'note-group-item' + (idx>0 ? ' note-group-divider' : '');
         itemEl.innerHTML = buildNoteInnerHtml(n);
         groupEl.appendChild(itemEl);
         wireNoteControls(itemEl, n);
@@ -2220,10 +2252,11 @@ function renderCard(cardId){
         + (note.isSituation ? ' is-situation' : '')
         + (isNumerology ? ' is-numerology' : '');
       const innerContent = buildNoteInnerHtml(note);
+      const thothWord = note.isThoth ? firstWordOf(note.html) : '';
       el.innerHTML = note.isSituation
         ? `<summary class="field-label-inline">SITUATIONS:</summary>${innerContent}`
         : note.isThoth
-          ? `<summary class="field-label-inline">THOTH NOTES:</summary>${innerContent}`
+          ? `<summary class="field-label-inline">THOTH:${thothWord ? ' '+escapeHtml(thothWord) : ''}</summary>${innerContent}`
           : innerContent;
       entries.appendChild(el);
       wireNoteControls(el, note);
