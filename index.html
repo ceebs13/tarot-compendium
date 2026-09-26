@@ -285,6 +285,11 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 .entry.is-thoth[open] summary::after{ transform: rotate(180deg); }
 .entry.is-thoth[open] summary{ margin-bottom:10px; }
 .field-label-inline{ font-weight:700; text-transform:uppercase; }
+/* The word shown after "THOTH:" in a Thoth note's collapsed header — plain
+   body text, deliberately not styled like the header itself (no bold, no
+   caps, no accent color), so it reads as a preview word rather than a
+   second label. */
+.thoth-header-word{ font-weight:400; text-transform:none; color: var(--ink); font-family:'Raleway', sans-serif; }
 .entry.astro-display .field-label-inline{ color: var(--blue); }
 .entry.is-keywords .field-label-inline{ color: var(--oxblood); }
 .entry.is-personality .field-label-inline{ color: var(--garnet); }
@@ -1456,6 +1461,25 @@ function firstWordOf(html){
   if(!match) return '';
   return match[0].replace(/^['-]+|['-]+$/g, '').toUpperCase();
 }
+// Since that first word is already shown in the header, showing it again
+// at the very start of the expanded body would just be a repeat of the
+// same word. This finds the same word inside the ORIGINAL (not
+// tag-stripped) html and cuts it out — walking the html tag-by-tag rather
+// than working on plain text, so every other tag, and the image itself,
+// stays exactly where it was; only that one run of letters disappears.
+function removeFirstWordForDisplay(html){
+  const parts = html.split(/(<[^>]+>)/g);
+  for(let i=0; i<parts.length; i++){
+    if(parts[i].startsWith('<')) continue;
+    const m = parts[i].match(/[A-Za-z0-9''-]+/);
+    if(m){
+      const idx = parts[i].indexOf(m[0]);
+      parts[i] = parts[i].slice(0, idx) + parts[i].slice(idx + m[0].length);
+      break;
+    }
+  }
+  return parts.join('');
+}
 function renderSourceLine(note){
   if(note.source && note.sourceLink){
     return `<a href="${escapeHtml(note.sourceLink)}" target="_blank" rel="noopener">${escapeHtml(note.source)}</a>`;
@@ -2251,12 +2275,17 @@ function renderCard(cardId){
         + (note.isThoth ? ' is-thoth' : '')
         + (note.isSituation ? ' is-situation' : '')
         + (isNumerology ? ' is-numerology' : '');
-      const innerContent = buildNoteInnerHtml(note);
       const thothWord = note.isThoth ? firstWordOf(note.html) : '';
+      // The word already shown in the header shouldn't repeat as the first
+      // word of the expanded body too — buildNoteInnerHtml reads note.html
+      // directly, so pass it a shallow copy with just that one word cut,
+      // rather than touching the note's actual stored content.
+      const displayNote = (note.isThoth && thothWord) ? {...note, html: removeFirstWordForDisplay(note.html)} : note;
+      const innerContent = buildNoteInnerHtml(displayNote);
       el.innerHTML = note.isSituation
         ? `<summary class="field-label-inline">SITUATIONS:</summary>${innerContent}`
         : note.isThoth
-          ? `<summary class="field-label-inline">THOTH:${thothWord ? ' '+escapeHtml(thothWord) : ''}</summary>${innerContent}`
+          ? `<summary><span class="field-label-inline">THOTH:</span>${thothWord ? ' <span class="thoth-header-word">'+escapeHtml(thothWord)+'</span>' : ''}</summary>${innerContent}`
           : innerContent;
       entries.appendChild(el);
       wireNoteControls(el, note);
