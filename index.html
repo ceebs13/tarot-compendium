@@ -284,6 +284,15 @@ main{ max-width:1180px; margin:0 auto; padding:30px 22px 80px; }
 }
 .entry.is-thoth[open] summary::after{ transform: rotate(180deg); }
 .entry.is-thoth[open] summary{ margin-bottom:10px; }
+/* Same look as the summary header above, for a Thoth note with nothing to
+   expand (just the word, no image or other text) — no cursor:pointer and
+   no ::after arrow, since neither applies to a plain div. */
+.thoth-header-static{
+  color: var(--blue);
+  font-family:'Raleway', sans-serif;
+  font-size:14px;
+  display:flex; align-items:center; gap:8px;
+}
 .field-label-inline{ font-weight:700; text-transform:uppercase; }
 /* The word shown after "THOTH:" in a Thoth note's collapsed header — plain
    body text, deliberately not styled like the header itself (no bold, no
@@ -1459,7 +1468,16 @@ function firstWordOf(html){
   text = text.trim();
   const match = text.match(/[A-Za-z0-9''-]+/);
   if(!match) return '';
-  return match[0].replace(/^['-]+|['-]+$/g, '').toUpperCase();
+  return match[0].replace(/^['-]+|['-]+$/g, '');
+}
+// True if a Thoth note has anything left to show beyond its header word —
+// an image, or any other text. Checked against the html AFTER that word
+// has already been cut out, so a note that's genuinely just that one word
+// (nothing else, no image) correctly comes back false.
+function hasVisibleContentBeyond(html){
+  if(/<img[^>]*>/i.test(html)) return true;
+  const text = html.replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();
+  return text.length > 0;
 }
 // Since that first word is already shown in the header, showing it again
 // at the very start of the expanded body would just be a repeat of the
@@ -2260,7 +2278,18 @@ function renderCard(cardId){
       entries.appendChild(groupEl);
       i = j;
     } else {
-      const el = document.createElement((note.isSituation || note.isThoth) ? 'details' : 'div');
+      const thothWord = note.isThoth ? firstWordOf(note.html) : '';
+      // The word already shown in the header shouldn't repeat as the first
+      // word of the expanded body too — buildNoteInnerHtml reads note.html
+      // directly, so pass it a shallow copy with just that one word cut,
+      // rather than touching the note's actual stored content.
+      const displayNote = (note.isThoth && thothWord) ? {...note, html: removeFirstWordForDisplay(note.html)} : note;
+      // A Thoth note that really is just that one word — no image, no
+      // other text — has nothing to expand, so it doesn't get a details/
+      // summary at all: no arrow, not clickable, just the header on its own.
+      const thothHasMore = note.isThoth ? hasVisibleContentBeyond(displayNote.html) : true;
+      const useDetails = note.isSituation || (note.isThoth && thothHasMore);
+      const el = document.createElement(useDetails ? 'details' : 'div');
       const isNumerology = noteIsNumerology(note);
       el.className = 'entry'
         + (noteHasImage(note) ? ' has-images' : '')
@@ -2275,17 +2304,14 @@ function renderCard(cardId){
         + (note.isThoth ? ' is-thoth' : '')
         + (note.isSituation ? ' is-situation' : '')
         + (isNumerology ? ' is-numerology' : '');
-      const thothWord = note.isThoth ? firstWordOf(note.html) : '';
-      // The word already shown in the header shouldn't repeat as the first
-      // word of the expanded body too — buildNoteInnerHtml reads note.html
-      // directly, so pass it a shallow copy with just that one word cut,
-      // rather than touching the note's actual stored content.
-      const displayNote = (note.isThoth && thothWord) ? {...note, html: removeFirstWordForDisplay(note.html)} : note;
       const innerContent = buildNoteInnerHtml(displayNote);
+      const thothHeaderInner = `<span class="field-label-inline">THOTH:</span>${thothWord ? ' <span class="thoth-header-word">'+escapeHtml(thothWord)+'</span>' : ''}`;
       el.innerHTML = note.isSituation
         ? `<summary class="field-label-inline">SITUATIONS:</summary>${innerContent}`
         : note.isThoth
-          ? `<summary><span class="field-label-inline">THOTH:</span>${thothWord ? ' <span class="thoth-header-word">'+escapeHtml(thothWord)+'</span>' : ''}</summary>${innerContent}`
+          ? (thothHasMore
+              ? `<summary>${thothHeaderInner}</summary>${innerContent}`
+              : `<div class="thoth-header-static">${thothHeaderInner}</div>${innerContent}`)
           : innerContent;
       entries.appendChild(el);
       wireNoteControls(el, note);
